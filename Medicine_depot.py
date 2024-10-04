@@ -124,8 +124,8 @@ def check_inventory():
                     type: "LiveStream",
                     target: document.querySelector('#scanner-container'),
                     constraints: {
-                        width: {min: 320},
-                        height: {min: 240},
+                        width: {min: 640},
+                        height: {min: 480},
                         aspectRatio: {min: 1, max: 2},
                         facingMode: "environment"
                     },
@@ -137,8 +137,22 @@ def check_inventory():
                 numOfWorkers: 2,
                 decoder: {
                     readers: [
-                        "ean_reader",
-                        "ean_8_reader",
+                        {
+                            format: "ean_reader",
+                            config: {
+                                supplements: [
+                                    'ean_5_reader', 'ean_2_reader'
+                                ]
+                            }
+                        },
+                        {
+                            format: "ean_8_reader",
+                            config: {
+                                supplements: [
+                                    'ean_5_reader', 'ean_2_reader'
+                                ]
+                            }
+                        },
                         "code_128_reader",
                         "code_39_reader",
                         "code_39_vin_reader",
@@ -148,7 +162,8 @@ def check_inventory():
                         "i2of5_reader"
                     ]
                 },
-                locate: true
+                locate: true,
+                frequency: 10
             }, function(err) {
                 if (err) {
                     console.log(err);
@@ -164,20 +179,23 @@ def check_inventory():
                 var code = result.codeResult.code;
                 document.querySelector('#scanner-status').textContent = "已掃描到條碼：" + code;
                 
-                // 更新 Streamlit 的輸入欄位並觸發檢查
-                var streamlitInput = parent.document.querySelector('.stTextInput input');
-                if (streamlitInput) {
-                    streamlitInput.value = code;
-                    streamlitInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    
-                    // 觸發表單提交
-                    var submitButton = parent.document.querySelector('button[kind="primaryFormSubmit"]');
-                    if (submitButton) {
-                        submitButton.click();
+                // 檢查條碼長度是否正確
+                if (code.length === 13 || code.length === 8) {
+                    // 更新 Streamlit 的輸入欄位並觸發檢查
+                    var streamlitInput = parent.document.querySelector('.stTextInput input');
+                    if (streamlitInput) {
+                        streamlitInput.value = code;
+                        streamlitInput.dispatchEvent(new Event('input', { bubbles: true }));
+                        
+                        // 觸發表單提交
+                        var submitButton = parent.document.querySelector('button[kind="primaryFormSubmit"]');
+                        if (submitButton) {
+                            submitButton.click();
+                        }
                     }
+                } else {
+                    document.querySelector('#scanner-status').textContent = "掃描到無效條碼，請重試";
                 }
-                
-                // 不停止掃描器，繼續掃描下一個商品
             });
         }
 
@@ -237,21 +255,26 @@ def check_inventory():
 def check_and_mark_item(df, barcode):
     if '條碼' not in df.columns:
         st.error("數據框中缺少 '條碼' 列")
-        return
+        return df
     
+    # 嘗試不同的條碼匹配方式
     item = df[df['條碼'].astype(str) == str(barcode)]
+    if item.empty:
+        # 如果完全匹配失敗，嘗試部分匹配
+        item = df[df['條碼'].astype(str).str.contains(str(barcode))]
+    
     if not item.empty:
         st.success(f"找到商品：{item['藥品名稱'].values[0] if '藥品名稱' in item.columns else '未知商品'}")
         for col in ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存']:
             if col in item.columns:
                 st.write(f"{col}：{item[col].values[0]}")
         
-        if '檢貨狀態' in item.columns and item['檢貨狀態'].values[0] != '已檢貨':
-            df.loc[df['條碼'].astype(str) == str(barcode), '檢貨狀態'] = '已檢貨'
-            st.session_state['inventory_df'] = df
-            st.success("商品已自動標記為已檢貨")
-        elif '檢貨狀態' in item.columns:
-            st.info("此商品已經檢貨")
+        if '檢貨狀態' in item.columns:
+            if item['檢貨狀態'].values[0] != '已檢貨':
+                df.loc[df['條碼'].astype(str).str.contains(str(barcode)), '檢貨狀態'] = '已檢貨'
+                st.success("商品已自動標記為已檢貨")
+            else:
+                st.info("此商品已經檢貨")
         else:
             st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
     else:
