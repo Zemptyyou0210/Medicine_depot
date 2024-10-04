@@ -9,6 +9,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
+import streamlit.components.v1 as components
 
 # 設置頁面
 st.set_page_config(page_title="庫存管理系統", layout="wide")
@@ -88,17 +89,10 @@ drive_service = build('drive', 'v3', credentials=credentials)
 
 # 獲取文件夾中的文件列表
 def list_files_in_folder(folder_id):
-    try:
-        results = drive_service.files().list(
-            q=f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
-            fields="files(id, name)").execute()
-        files = results.get('files', [])
-        st.write(f"找到 {len(files)} 個文件")
-        return files
-    except Exception as e:
-        st.error(f"獲取文件列表時發生錯誤: {str(e)}")
-        st.exception(e)
-        return []
+    results = drive_service.files().list(
+        q=f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
+        fields="files(id, name)").execute()
+    return results.get('files', [])
 
 # 讀取 Excel 文件
 def read_excel_from_drive(file_id):
@@ -138,14 +132,66 @@ def create_sidebar():
     )
 
 def read_from_drive():
-    # 實現從 Google Drive 讀取的邏輯
     st.subheader("從 Google Drive 讀取")
-    # ... 之前實現的 Google Drive 讀取代碼 ...
+    folder_id = '1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA'  # Google Drive 文件夾 ID
+    files = list_files_in_folder(folder_id)
+    
+    if not files:
+        st.warning("未找到 Excel 文件")
+        return None
+    
+    selected_file = st.selectbox("選擇 Excel 文件", [file['name'] for file in files])
+    file_id = next(file['id'] for file in files if file['name'] == selected_file)
+    
+    df = read_excel_from_drive(file_id)
+    st.session_state['inventory_df'] = df
+    st.success(f"已成功讀取 {selected_file}")
+    return df
 
 def check_inventory():
-    # 實現檢貨邏輯
     st.subheader("檢貨")
-    # ... 檢貨相關代碼 ...
+    if 'inventory_df' not in st.session_state:
+        st.warning("請先從 Google Drive 讀取庫存文件")
+        return
+
+    df = st.session_state['inventory_df']
+    
+    # 顯示當前庫存狀態
+    st.write("當前庫存狀態：")
+    st.dataframe(df.style.applymap(lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1', subset=['狀態']))
+
+    # 條碼掃描區域
+    barcode = st.text_input("輸入條碼或使用掃描器")
+    
+    if barcode:
+        # 查找並更新產品狀態
+        mask = df['條碼'] == barcode
+        if mask.any():
+            df.loc[mask, '狀態'] = '已檢貨'
+            st.success(f"已更新條碼 {barcode} 的狀態為已檢貨")
+        else:
+            st.error(f"未找到條碼 {barcode} 的產品")
+
+    # 更新 session state
+    st.session_state['inventory_df'] = df
+
+    # 添加條碼掃描的 JavaScript 代碼
+    components.html(
+        """
+        <script src="https://unpkg.com/html5-qrcode"></script>
+        <div id="reader" width="600px"></div>
+        <script>
+            function onScanSuccess(decodedText, decodedResult) {
+                // 將掃描結果發送到 Streamlit
+                window.parent.postMessage({type: 'streamlit:setComponentValue', value: decodedText}, '*');
+            }
+            var html5QrcodeScanner = new Html5QrcodeScanner(
+                "reader", { fps: 10, qrbox: 250 });
+            html5QrcodeScanner.render(onScanSuccess);
+        </script>
+        """,
+        height=300,
+    )
 
 def receive_goods():
     # 實現收貨邏輯
