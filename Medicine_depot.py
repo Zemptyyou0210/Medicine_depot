@@ -7,7 +7,6 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2.credentials import Credentials
-from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
 
@@ -24,7 +23,7 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 st.title("庫存管理系統")
 
 # 功能選擇
-function = st.sidebar.radio("選擇功能", ("上傳清單", "從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"))
+function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"))
 
 # 加載數據
 @st.cache_data
@@ -89,10 +88,17 @@ drive_service = build('drive', 'v3', credentials=credentials)
 
 # 獲取文件夾中的文件列表
 def list_files_in_folder(folder_id):
-    results = drive_service.files().list(
-        q=f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
-        fields="files(id, name)").execute()
-    return results.get('files', [])
+    try:
+        results = drive_service.files().list(
+            q=f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
+            fields="files(id, name)").execute()
+        files = results.get('files', [])
+        st.write(f"找到 {len(files)} 個文件")
+        return files
+    except Exception as e:
+        st.error(f"獲取文件列表時發生錯誤: {str(e)}")
+        st.exception(e)
+        return []
 
 # 讀取 Excel 文件
 def read_excel_from_drive(file_id):
@@ -109,37 +115,37 @@ def read_excel_from_drive(file_id):
 def main():
     st.title("藥品庫存管理系統")
 
-    # 指定的文件夾 ID
-    folder_id = '1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA'
+    # 功能選擇
+    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"))
 
-    # 獲取文件夾中的文件列表
-    files = list_files_in_folder(folder_id)
+    if function == "從 Google Drive 讀取":
+        read_from_drive()
+    elif function == "檢貨":
+        check_inventory()
+    elif function == "收貨":
+        receive_goods()
+    elif function == "備份到 Google Drive":
+        backup_to_drive()
 
-    # 創建文件選擇下拉菜單
-    file_names = [file['name'] for file in files]
-    selected_file = st.selectbox("選擇一個文件", file_names)
+def read_from_drive():
+    # 實現從 Google Drive 讀取的邏輯
+    st.subheader("從 Google Drive 讀取")
+    # ... 之前實現的 Google Drive 讀取代碼 ...
 
-    if selected_file:
-        # 獲取選中文件的 ID
-        file_id = next(file['id'] for file in files if file['name'] == selected_file)
+def check_inventory():
+    # 實現檢貨邏輯
+    st.subheader("檢貨")
+    # ... 檢貨相關代碼 ...
 
-        try:
-            # 讀取選中的文件
-            df = read_excel_from_drive(file_id)
+def receive_goods():
+    # 實現收貨邏輯
+    st.subheader("收貨")
+    # ... 收貨相關代碼 ...
 
-            # 顯示庫存數據
-            st.write(df)
-
-            # 這裡添加您的其他應用邏輯
-            # ...
-
-        except Exception as e:
-            st.error(f"讀取文件時發生錯誤: {str(e)}")
-            st.exception(e)
+def backup_to_drive():
+    # 實現備份到 Google Drive 的邏輯
+    st.subheader("備份到 Google Drive")
+    # ... 備份相關代碼 ...
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        st.error(f"發生錯誤: {str(e)}")
-        st.exception(e)
+    main()
