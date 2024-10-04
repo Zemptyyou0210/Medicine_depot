@@ -28,13 +28,37 @@ function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨"
 
 # 加載數據
 @st.cache_data
-def load_data():
+def load_data_from_drive(file_id):
     try:
-        return pd.read_excel("inventory.xlsx")
-    except FileNotFoundError:
+        df = read_excel_from_drive(file_id)
+        if "商品編號" not in df.columns or "商品名稱" not in df.columns or "數量" not in df.columns:
+            df = pd.DataFrame(columns=["商品編號", "商品名稱", "數量", "檢貨狀態", "收貨狀態"])
+        if "檢貨狀態" not in df.columns:
+            df["檢貨狀態"] = "未檢貨"
+        if "收貨狀態" not in df.columns:
+            df["收貨狀態"] = "未收貨"
+        return df
+    except Exception as e:
+        st.error(f"讀取 Google Drive 文件時發生錯誤: {str(e)}")
         return pd.DataFrame(columns=["商品編號", "商品名稱", "數量", "檢貨狀態", "收貨狀態"])
 
-data = load_data()
+# 在 read_from_drive 函數中使用
+def read_from_drive():
+    st.subheader("從 Google Drive 讀取")
+    folder_id = '1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA'  # Google Drive 文件夾 ID
+    files = list_files_in_folder(folder_id)
+    
+    if not files:
+        st.warning("未找到 Excel 文件")
+        return None
+    
+    selected_file = st.selectbox("選擇 Excel 文件", [file['name'] for file in files])
+    file_id = next(file['id'] for file in files if file['name'] == selected_file)
+    
+    df = load_data_from_drive(file_id)
+    st.session_state['inventory_df'] = df
+    st.success(f"已成功讀取 {selected_file}")
+    return df
 
 # 條碼掃描 JavaScript
 barcode_scanner_js = """
@@ -130,23 +154,6 @@ def create_sidebar():
         ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"),
         key="function_selection"
     )
-
-def read_from_drive():
-    st.subheader("從 Google Drive 讀取")
-    folder_id = '1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA'  # Google Drive 文件夾 ID
-    files = list_files_in_folder(folder_id)
-    
-    if not files:
-        st.warning("未找到 Excel 文件")
-        return None
-    
-    selected_file = st.selectbox("選擇 Excel 文件", [file['name'] for file in files])
-    file_id = next(file['id'] for file in files if file['name'] == selected_file)
-    
-    df = read_excel_from_drive(file_id)
-    st.session_state['inventory_df'] = df
-    st.success(f"已成功讀取 {selected_file}")
-    return df
 
 def check_inventory():
     st.subheader("檢貨")
