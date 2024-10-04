@@ -60,6 +60,11 @@ def read_from_drive():
     
     try:
         df = read_excel_from_drive(file_id)
+        # 讀取 Excel 文件後，檢查並添加 '檢貨狀態' 列
+        if '檢貨狀態' not in df.columns:
+            df['檢貨狀態'] = '未檢貨'
+            st.info("已添加 '檢貨狀態' 列到數據中")
+
         st.session_state['inventory_df'] = df
         st.success(f"已成功讀取 {selected_file}")
         st.write(df)
@@ -118,6 +123,7 @@ def check_inventory():
     barcode_scanner_html = """
     <div id="scanner-container"></div>
     <input type="text" id="barcode-input" style="display:none;">
+    <button id="start-scanner" style="display:none;">開始掃描</button>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <script>
         var scannerIsRunning = false;
@@ -129,15 +135,19 @@ def check_inventory():
                     type: "LiveStream",
                     target: document.querySelector('#scanner-container'),
                     constraints: {
-                        facingMode: "environment"  // 使用後置攝像頭
+                        width: 320,
+                        height: 240,
+                        facingMode: "environment"
                     },
                 },
                 decoder: {
                     readers: ["ean_reader", "ean_8_reader", "code_128_reader"]
-                }
+                },
+                locate: true
             }, function(err) {
                 if (err) {
                     console.log(err);
+                    alert("無法啟動掃描器：" + err);
                     return;
                 }
                 Quagga.start();
@@ -147,33 +157,28 @@ def check_inventory():
             Quagga.onDetected(function(result) {
                 var code = result.codeResult.code;
                 document.querySelector('#barcode-input').value = code;
-                document.querySelector('#barcode-input').dispatchEvent(new Event('input'));
+                document.querySelector('#barcode-input').dispatchEvent(new Event('change'));
                 Quagga.stop();
                 scannerIsRunning = false;
-                // 觸發表單提交
-                document.querySelector('form').submit();
             });
         }
 
-        // 檢查是否已經獲得了相機權限
-        if (localStorage.getItem('cameraPermission') === 'granted') {
-            startScanner();
-        } else {
-            navigator.mediaDevices.getUserMedia({ video: true })
-                .then(function(stream) {
-                    localStorage.setItem('cameraPermission', 'granted');
-                    startScanner();
-                    stream.getTracks().forEach(track => track.stop());
-                })
-                .catch(function(err) {
-                    console.log("未能獲得相機權限: ", err);
-                });
-        }
+        document.querySelector('#start-scanner').addEventListener('click', function() {
+            if (scannerIsRunning) {
+                Quagga.stop();
+                scannerIsRunning = false;
+            } else {
+                startScanner();
+            }
+        });
+
+        // 初始化時不自動啟動掃描器
+        document.querySelector('#start-scanner').style.display = 'block';
     </script>
     """
     
     components.html(barcode_scanner_html, height=300)
-    
+
     # 使用 form 來確保條碼輸入後可以立即處理
     with st.form(key='barcode_form'):
         barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
@@ -292,6 +297,22 @@ def main():
 
     if st.button("測試 Google Drive 訪問"):
         test_drive_access()
+
+st.markdown("""
+<style>
+#scanner-container {
+    position: relative;
+    width: 320px;
+    height: 240px;
+    overflow: hidden;
+}
+#scanner-container video {
+    width: 320px;
+    height: 240px;
+    object-fit: cover;
+}
+</style>
+""", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
