@@ -77,11 +77,35 @@ def test_drive_access():
 
 def check_inventory():
     st.subheader("檢貨")
+    
+    if st.button("測試 Google Drive 訪問"):
+        test_drive_access()
+    
     if 'inventory_df' not in st.session_state:
         st.warning("請先從 Google Drive 讀取庫存文件")
+        if st.button("前往讀取數據"):
+            st.session_state.function_selection = "從 Google Drive 讀取"
+            st.rerun()
         return
 
     df = st.session_state['inventory_df']
+    
+    st.write("當前庫存狀態：")
+    st.dataframe(df.style.applymap(lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1', subset=['檢貨狀態']))
+    
+    barcode = st.text_input("輸入商品條碼或掃描條碼")
+    
+    if st.button("檢查商品"):
+        if barcode:
+            check_item(df, barcode)
+        else:
+            st.warning("請輸入商品條碼")
+    
+    total_items = len(df)
+    checked_items = len(df[df['檢貨狀態'] == '已檢貨'])
+    progress = checked_items / total_items
+    st.progress(progress)
+    st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
 
 def check_item(df, barcode):
     item = df[df['條碼'] == barcode]
@@ -93,6 +117,7 @@ def check_item(df, barcode):
                 df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
                 st.session_state['inventory_df'] = df
                 st.success("商品已標記為已檢貨")
+                st.rerun()
         else:
             st.info("此商品已經檢貨")
     else:
