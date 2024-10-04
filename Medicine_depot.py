@@ -251,8 +251,10 @@ def check_inventory():
 
     if submit_button or barcode:
         df = check_and_mark_item(df, barcode)
-        st.session_state['inventory_df'] = df  # 更新 session state 中的數據
-        st.rerun()  # 強制重新運行應用以刷新顯示
+        if st.button("確認更新"):
+            st.session_state['inventory_df'] = df  # 更新 session state 中的數據
+            st.success("數據已更新")
+            st.rerun()  # 強制重新運行應用以刷新顯示
 
     # 顯示檢貨進度
     total_items = len(df)
@@ -266,13 +268,19 @@ def check_and_mark_item(df, barcode):
         st.error("數據框中缺少 '條碼' 列")
         return df
     
-    # 嘗試不同的條碼匹配方式
+    # 首先嘗試完全匹配
     item = df[df['條碼'].astype(str) == str(barcode)]
+    
     if item.empty:
-        # 如果完全匹配失敗，嘗試部分匹配
-        item = df[df['條碼'].astype(str).str.contains(str(barcode))]
+        # 如果完全匹配失敗，嘗試部分匹配，但要求更嚴格的匹配
+        item = df[df['條碼'].astype(str).str.contains(f"^{barcode}$|^{barcode}|{barcode}$")]
     
     if not item.empty:
+        if len(item) > 1:
+            st.warning(f"找到多個匹配的商品，請確認：")
+            st.write(item[['藥品名稱', '條碼', '檢貨狀態']])
+            return df
+        
         st.success(f"找到商品：{item['藥品名稱'].values[0] if '藥品名稱' in item.columns else '未知商品'}")
         for col in ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存']:
             if col in item.columns:
@@ -280,7 +288,8 @@ def check_and_mark_item(df, barcode):
         
         if '檢貨狀態' in item.columns:
             if item['檢貨狀態'].values[0] != '已檢貨':
-                df.loc[df['條碼'].astype(str).str.contains(str(barcode)), '檢貨狀態'] = '已檢貨'
+                # 只更新完全匹配的條碼
+                df.loc[df['條碼'].astype(str) == str(barcode), '檢貨狀態'] = '已檢貨'
                 st.success("商品已自動標記為已檢貨")
             else:
                 st.info("此商品已經檢貨")
@@ -288,7 +297,7 @@ def check_and_mark_item(df, barcode):
             st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
     else:
         st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
-
+    
     return df
 
 def receive_inventory():
