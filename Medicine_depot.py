@@ -250,7 +250,15 @@ def check_inventory():
         submit_button = st.form_submit_button("檢查商品")
 
     if submit_button or barcode:
-        check_and_mark_item(df, barcode)
+        df = check_and_mark_item(df, barcode)
+        st.session_state['inventory_df'] = df  # 更新 session state 中的數據
+
+    # 顯示檢貨進度
+    total_items = len(df)
+    checked_items = len(df[df['檢貨狀態'] == '已檢貨'])
+    progress = checked_items / total_items
+    st.progress(progress)
+    st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
 
 def check_and_mark_item(df, barcode):
     if '條碼' not in df.columns:
@@ -280,12 +288,7 @@ def check_and_mark_item(df, barcode):
     else:
         st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
 
-    # 顯示檢貨進度
-    total_items = len(df)
-    checked_items = len(df[df['檢貨狀態'] == '已檢貨'])
-    progress = checked_items / total_items
-    st.progress(progress)
-    st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
+    return df
 
 def receive_inventory():
     st.subheader("收貨")
