@@ -4,6 +4,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import pandas as pd
 import io
+import streamlit.components.v1 as components
 
 # 設置頁面
 st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
@@ -108,7 +109,53 @@ def check_inventory():
         st.write("顯示原始數據框：")
         st.dataframe(df)
     
-    barcode = st.text_input("輸入商品條碼或掃描條碼")
+    # 添加條碼掃描功能
+    barcode_scanner_html = """
+    <div id="scanner-container"></div>
+    <input type="text" id="barcode-input" style="display:none;">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <script>
+        var scannerIsRunning = false;
+
+        function startScanner() {
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector('#scanner-container')
+                },
+                decoder: {
+                    readers: ["ean_reader", "ean_8_reader", "code_128_reader"]
+                }
+            }, function(err) {
+                if (err) {
+                    console.log(err);
+                    return;
+                }
+                Quagga.start();
+                scannerIsRunning = true;
+            });
+
+            Quagga.onDetected(function(result) {
+                var code = result.codeResult.code;
+                document.querySelector('#barcode-input').value = code;
+                document.querySelector('#barcode-input').dispatchEvent(new Event('input'));
+                Quagga.stop();
+                scannerIsRunning = false;
+            });
+        }
+
+        if (scannerIsRunning) {
+            Quagga.stop();
+        } else {
+            startScanner();
+        }
+    </script>
+    """
+    
+    components.html(barcode_scanner_html, height=300)
+    
+    barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
     
     if st.button("檢查商品"):
         if barcode:
