@@ -1,0 +1,8 @@
+streamlit_drawable_canvas
+openpyxl
+pandas
+datetime
+Pillow
+reportlab
+google-auth-oauthlib
+google-api-python-client
