@@ -87,6 +87,13 @@ credentials = service_account.Credentials.from_service_account_info(
 # 創建 Drive API 客戶端
 drive_service = build('drive', 'v3', credentials=credentials)
 
+# 獲取文件夾中的文件列表
+def list_files_in_folder(folder_id):
+    results = drive_service.files().list(
+        q=f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
+        fields="files(id, name)").execute()
+    return results.get('files', [])
+
 # 讀取 Excel 文件
 def read_excel_from_drive(file_id):
     request = drive_service.files().get_media(fileId=file_id)
@@ -98,36 +105,37 @@ def read_excel_from_drive(file_id):
     fh.seek(0)
     return pd.read_excel(fh)
 
-# 寫入 Excel 文件
-def write_excel_to_drive(df, filename, folder_id):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False)
-    output.seek(0)
-    file_metadata = {'name': filename, 'parents': [folder_id]}
-    media = MediaIoBaseUpload(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    return file.get('id')
-
 # Streamlit 應用程式主函數
 def main():
     st.title("藥品庫存管理系統")
 
-    # 從 Google Drive 讀取庫存數據
-    inventory_file_id = 'YOUR_INVENTORY_FILE_ID'  # 替換為您的庫存文件 ID
-    df = read_excel_from_drive(inventory_file_id)
+    # 指定的文件夾 ID
+    folder_id = '1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA'
 
-    # 顯示庫存數據
-    st.write(df)
+    # 獲取文件夾中的文件列表
+    files = list_files_in_folder(folder_id)
 
-    # 這裡添加您的其他應用邏輯
-    # ...
+    # 創建文件選擇下拉菜單
+    file_names = [file['name'] for file in files]
+    selected_file = st.selectbox("選擇一個文件", file_names)
 
-    # 保存更新後的庫存數據
-    if st.button('保存更新'):
-        folder_id = 'YOUR_FOLDER_ID'  # 替換為您要保存文件的文件夾 ID
-        new_file_id = write_excel_to_drive(df, 'updated_inventory.xlsx', folder_id)
-        st.success(f'庫存已更新，新文件 ID: {new_file_id}')
+    if selected_file:
+        # 獲取選中文件的 ID
+        file_id = next(file['id'] for file in files if file['name'] == selected_file)
+
+        try:
+            # 讀取選中的文件
+            df = read_excel_from_drive(file_id)
+
+            # 顯示庫存數據
+            st.write(df)
+
+            # 這裡添加您的其他應用邏輯
+            # ...
+
+        except Exception as e:
+            st.error(f"讀取文件時發生錯誤: {str(e)}")
+            st.exception(e)
 
 if __name__ == "__main__":
     try:
