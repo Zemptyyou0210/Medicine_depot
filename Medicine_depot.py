@@ -78,48 +78,17 @@ barcode_scanner_js = """
 </style>
 """
 
-# 添加以下函數來獲取 Google Drive 服務
-def get_drive_service():
-    # 創建憑證
-    credentials = service_account.Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=['https://www.googleapis.com/auth/drive.file']
-    )
-    
-    # 創建 Drive API 客戶端
-    drive_service = build('drive', 'v3', credentials=credentials)
-    
-    return drive_service
+# 創建憑證
+credentials = service_account.Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"],
+    scopes=['https://www.googleapis.com/auth/drive.file']
+)
 
-# 添加以下函數來上傳 Excel 文件到 Google Drive
-def upload_to_drive(df, filename):
-    drive_service = get_drive_service()
-    
-    # 將 DataFrame 轉換為 Excel 文件
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='Inventory')
-    output.seek(0)
-    
-    # 定義文件元數據
-    file_metadata = {
-        'name': filename,
-        'parents': ['1GS8VEll4sC3JJwwsUmP7YZhIGmmyAf_S']  # 指定的資料夾 ID
-    }
-    
-    # 創建媒體文件
-    media = MediaFileUpload(output, 
-                            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                            resumable=True)
-    
-    # 執行文件上傳
-    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    
-    return file.get('id')
+# 創建 Drive API 客戶端
+drive_service = build('drive', 'v3', credentials=credentials)
 
-# 讀取文件函數
-def read_file(file_id):
-    drive_service = get_drive_service()
+# 讀取 Excel 文件
+def read_excel_from_drive(file_id):
     request = drive_service.files().get_media(fileId=file_id)
     fh = io.BytesIO()
     downloader = MediaIoBaseDownload(fh, request)
@@ -127,171 +96,42 @@ def read_file(file_id):
     while done is False:
         status, done = downloader.next_chunk()
     fh.seek(0)
-    return fh.read()
+    return pd.read_excel(fh)
 
-# 寫入文件函數
-def write_file(filename, content, mime_type, folder_id):
-    drive_service = get_drive_service()
+# 寫入 Excel 文件
+def write_excel_to_drive(df, filename, folder_id):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+    output.seek(0)
     file_metadata = {'name': filename, 'parents': [folder_id]}
-    media = MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type)
+    media = MediaIoBaseUpload(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
     return file.get('id')
 
-# 上傳清單
-if function == "上傳清單":
-    st.header("上傳清單")
-    uploaded_file = st.file_uploader("選擇 Excel 文件", type="xlsx")
-    if uploaded_file is not None:
-        data = pd.read_excel(uploaded_file)
-        data.to_excel("inventory.xlsx", index=False)
-        st.success("清單已成功上傳！")
-        st.write(data)
+# Streamlit 應用程式主函數
+def main():
+    st.title("藥品庫存管理系統")
 
-# 從 Google Drive 讀取
-elif function == "從 Google Drive 讀取":
-    st.header("從 Google Drive 讀取文件")
+    # 從 Google Drive 讀取庫存數據
+    inventory_file_id = 'YOUR_INVENTORY_FILE_ID'  # 替換為您的庫存文件 ID
+    df = read_excel_from_drive(inventory_file_id)
 
-    # 檢查是否已經有存儲的憑證
-    if 'credentials' not in st.session_state:
-        # 如果沒有，創建授權流程
-        flow = Flow.from_client_secrets_file(
-            client_secrets_file,
-            scopes=['https://www.googleapis.com/auth/drive.readonly'],
-            redirect_uri='http://localhost:8501/'
-        )
-        
-        # 使用 st.query_params 來獲取授權碼
-        if 'code' in st.query_params:
-            flow.fetch_token(code=st.query_params['code'])
-            st.session_state.credentials = flow.credentials
-            st.rerun()
-        else:
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            st.markdown(f"請點擊此鏈接進行授權: [Authorize]({auth_url})")
-            st.stop()
+    # 顯示庫存數據
+    st.write(df)
 
-    # 如果有有效的憑證，繼續處理
-    if 'credentials' in st.session_state:
-        credentials = Credentials(
-            token=st.session_state.credentials.token,
-            refresh_token=st.session_state.credentials.refresh_token,
-            token_uri=st.session_state.credentials.token_uri,
-            client_id=st.session_state.credentials.client_id,
-            client_secret=st.session_state.credentials.client_secret,
-            scopes=st.session_state.credentials.scopes
-        )
-        drive_service = build('drive', 'v3', credentials=credentials)
-        
-        # 文件夾 ID
-        folder_id = '1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA'
+    # 這裡添加您的其他應用邏輯
+    # ...
 
-        try:
-            # 獲取文件夾中的文件列表
-            results = drive_service.files().list(
-                q=f"'{folder_id}' in parents",
-                pageSize=10,
-                fields="nextPageToken, files(id, name, mimeType)"
-            ).execute()
-            items = results.get('files', [])
+    # 保存更新後的庫存數據
+    if st.button('保存更新'):
+        folder_id = 'YOUR_FOLDER_ID'  # 替換為您要保存文件的文件夾 ID
+        new_file_id = write_excel_to_drive(df, 'updated_inventory.xlsx', folder_id)
+        st.success(f'庫存已更新，新文件 ID: {new_file_id}')
 
-            if not items:
-                st.write('沒有找到文件。')
-            else:
-                # 創建文件選擇下拉菜單
-                file_names = [item['name'] for item in items]
-                selected_file = st.selectbox('選擇要查看的文件', file_names)
-
-                # 獲取選中文件的 ID
-                selected_file_id = next(item['id'] for item in items if item['name'] == selected_file)
-
-                if st.button('查看文件'):
-                    # 從 Google Drive 下載文件
-                    request = drive_service.files().get_media(fileId=selected_file_id)
-                    file = io.BytesIO()
-                    downloader = MediaIoBaseDownload(file, request)
-                    done = False
-                    while done is False:
-                        status, done = downloader.next_chunk()
-
-                    # 重置文件指針到開始位置
-                    file.seek(0)
-
-                    # 讀取文件（假設是 Excel 格式）
-                    data = pd.read_excel(file)
-                    data.to_excel("inventory.xlsx", index=False)
-
-                    # 顯示數據
-                    st.write(data)
-                    st.success("文件已成功讀取並保存為本地庫存！")
-
-        except Exception as e:
-            st.error(f'發生錯誤：{str(e)}')
-    else:
-        st.warning("請先完成授權流程。")
-
-# 檢貨
-elif function == "檢貨":
-    st.header("檢貨")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.components.v1.html(barcode_scanner_js, height=300)
-    with col2:
-        manual_input = st.text_input("或手動輸入商品編號")
-    
-    scanned_code = st.session_state.get('scanned_code', None)
-    
-    if scanned_code or manual_input:
-        code = scanned_code or manual_input
-        if code in data["商品編號"].values:
-            data.loc[data["商品編號"] == code, "檢貨狀態"] = "已檢查"
-            data.to_excel("inventory.xlsx", index=False)
-            st.success(f"商品 {code} 已檢查！")
-            st.session_state.scanned_code = None  # 重置掃描的代碼
-        else:
-            st.error(f"找不到商品 {code}")
-    
-    st.write(data.style.applymap(lambda x: 'background-color: lightgreen' if x == '已檢查' else '', subset=['檢貨狀態']))
-
-# 收貨
-elif function == "收貨":
-    st.header("收貨")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        st.components.v1.html(barcode_scanner_js, height=300)
-    with col2:
-        manual_input = st.text_input("或手動輸入商品編號")
-    
-    scanned_code = st.session_state.get('scanned_code', None)
-    
-    if scanned_code or manual_input:
-        code = scanned_code or manual_input
-        if code in data["商品編號"].values:
-            data.loc[data["商品編號"] == code, "收貨狀態"] = "已收貨"
-            data.to_excel("inventory.xlsx", index=False)
-            st.success(f"商品 {code} 已收貨！")
-            st.session_state.scanned_code = None  # 重置掃描的代碼
-        else:
-            st.error(f"找不到商品 {code}")
-    
-    st.write(data.style.applymap(lambda x: 'background-color: lightyellow' if x == '已收貨' else '', subset=['收貨狀態']))
-
-# 顯示當前庫存
-st.header("當前庫存")
-st.write(data)
-
-# 假設您已經有了一個函數來獲取最終的貨物結果
-def get_final_inventory():
-    # 這裡應該是您獲取最終庫存數據的邏輯
-    # 返回一個 pandas DataFrame
-    pass
-
-# 在您的 Streamlit 應用中調用此函數
-if function == "備份到 Google Drive":
-    if st.button('備份到 Google Drive'):
-        try:
-            file_id = upload_to_drive(get_final_inventory(), 'Inventory_Backup.xlsx')
-            st.success(f'備份成功！文件 ID: {file_id}')
-        except Exception as e:
-            st.error(f'備份失敗：{str(e)}')
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        st.error(f"發生錯誤: {str(e)}")
+        st.exception(e)
