@@ -164,21 +164,7 @@ def check_inventory():
                         "upc_reader",
                         "upc_e_reader",
                         "i2of5_reader"
-                    ],
-                    debug: {
-                        showCanvas: true,
-                        showPatches: true,
-                        showFoundPatches: true,
-                        showSkeleton: true,
-                        showLabels: true,
-                        showPatchLabels: true,
-                        showRemainingPatchLabels: true,
-                        boxFromPatches: {
-                            showTransformed: true,
-                            showTransformedBox: true,
-                            showBB: true
-                        }
-                    }
+                    ]
                 },
                 locate: true
             }, function(err) {
@@ -208,8 +194,30 @@ def check_inventory():
                 this.textContent = "開始掃描";
                 document.querySelector('#scanner-status').textContent = "掃描器已停止";
             } else {
+                // 針對 iOS 的相機權限請求
+                if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
+                    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+                        .then(function(stream) {
+                            stream.getTracks().forEach(track => track.stop());
+                            startScanner();
+                            this.textContent = "停止掃描";
+                        })
+                        .catch(function(err) {
+                            console.log("無法獲取相機權限: ", err);
+                            document.querySelector('#scanner-status').textContent = "無法獲取相機權限：" + err;
+                        });
+                } else {
+                    console.log("此瀏覽器不支持 getUserMedia");
+                    document.querySelector('#scanner-status').textContent = "此瀏覽器不支持相機訪問";
+                }
+            }
+        });
+
+        // 處理 iOS 上的方向變化
+        window.addEventListener('orientationchange', function() {
+            if (scannerIsRunning) {
+                Quagga.stop();
                 startScanner();
-                this.textContent = "停止掃描";
             }
         });
     </script>
@@ -369,6 +377,8 @@ st.markdown("""
     margin: 10px auto;
     padding: 10px 20px;
     font-size: 16px;
+    -webkit-appearance: none;
+    border-radius: 0;
 }
 #scanner-status {
     text-align: center;
