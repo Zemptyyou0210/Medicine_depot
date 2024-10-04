@@ -123,7 +123,8 @@ def check_inventory():
     barcode_scanner_html = """
     <div id="scanner-container"></div>
     <input type="text" id="barcode-input" style="display:none;">
-    <button id="start-scanner" style="display:none;">開始掃描</button>
+    <button id="start-scanner">開始/停止掃描</button>
+    <div id="scanner-status"></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <script>
         var scannerIsRunning = false;
@@ -135,31 +136,57 @@ def check_inventory():
                     type: "LiveStream",
                     target: document.querySelector('#scanner-container'),
                     constraints: {
-                        width: 320,
-                        height: 240,
+                        width: 640,
+                        height: 480,
                         facingMode: "environment"
                     },
                 },
                 decoder: {
-                    readers: ["ean_reader", "ean_8_reader", "code_128_reader"]
+                    readers: [
+                        "ean_reader",
+                        "ean_8_reader",
+                        "code_128_reader",
+                        "code_39_reader",
+                        "code_39_vin_reader",
+                        "codabar_reader",
+                        "upc_reader",
+                        "upc_e_reader",
+                        "i2of5_reader"
+                    ],
+                    debug: {
+                        showCanvas: true,
+                        showPatches: true,
+                        showFoundPatches: true,
+                        showSkeleton: true,
+                        showLabels: true,
+                        showPatchLabels: true,
+                        showRemainingPatchLabels: true,
+                        boxFromPatches: {
+                            showTransformed: true,
+                            showTransformedBox: true,
+                            showBB: true
+                        }
+                    }
                 },
-                locate: true
+                locate: true,
+                frequency: 10
             }, function(err) {
                 if (err) {
                     console.log(err);
-                    alert("無法啟動掃描器：" + err);
+                    document.querySelector('#scanner-status').textContent = "無法啟動掃描器：" + err;
                     return;
                 }
                 Quagga.start();
                 scannerIsRunning = true;
+                document.querySelector('#scanner-status').textContent = "掃描器已啟動";
             });
 
             Quagga.onDetected(function(result) {
                 var code = result.codeResult.code;
                 document.querySelector('#barcode-input').value = code;
                 document.querySelector('#barcode-input').dispatchEvent(new Event('change'));
-                Quagga.stop();
-                scannerIsRunning = false;
+                document.querySelector('#scanner-status').textContent = "已掃描到條碼：" + code;
+                // 不要自動停止掃描器
             });
         }
 
@@ -167,17 +194,17 @@ def check_inventory():
             if (scannerIsRunning) {
                 Quagga.stop();
                 scannerIsRunning = false;
+                this.textContent = "開始掃描";
+                document.querySelector('#scanner-status').textContent = "掃描器已停止";
             } else {
                 startScanner();
+                this.textContent = "停止掃描";
             }
         });
-
-        // 初始化時不自動啟動掃描器
-        document.querySelector('#start-scanner').style.display = 'block';
     </script>
     """
     
-    components.html(barcode_scanner_html, height=300)
+    components.html(barcode_scanner_html, height=600)
 
     # 使用 form 來確保條碼輸入後可以立即處理
     with st.form(key='barcode_form'):
