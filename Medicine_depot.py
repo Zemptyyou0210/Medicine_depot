@@ -78,9 +78,6 @@ def test_drive_access():
 def check_inventory():
     st.subheader("檢貨")
     
-    if st.button("測試 Google Drive 訪問"):
-        test_drive_access()
-    
     if 'inventory_df' not in st.session_state:
         st.warning("請先從 Google Drive 讀取庫存文件")
         if st.button("前往讀取數據"):
@@ -90,8 +87,26 @@ def check_inventory():
 
     df = st.session_state['inventory_df']
     
+    # 顯示數據框的列名，以便調試
+    st.write("數據框列名：", df.columns.tolist())
+    
+    # 檢查 '檢貨狀態' 列是否存在
+    if '檢貨狀態' not in df.columns:
+        st.warning("數據框中缺少 '檢貨狀態' 列。正在添加該列...")
+        df['檢貨狀態'] = '未檢貨'
+        st.session_state['inventory_df'] = df
+    
     st.write("當前庫存狀態：")
-    st.dataframe(df.style.applymap(lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1', subset=['檢貨狀態']))
+    try:
+        styled_df = df.style.applymap(
+            lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1', 
+            subset=['檢貨狀態']
+        )
+        st.dataframe(styled_df)
+    except Exception as e:
+        st.error(f"顯示數據框時發生錯誤: {str(e)}")
+        st.write("顯示原始數據框：")
+        st.dataframe(df)
     
     barcode = st.text_input("輸入商品條碼或掃描條碼")
     
@@ -108,10 +123,15 @@ def check_inventory():
     st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
 
 def check_item(df, barcode):
+    # 確保 '條碼' 列存在
+    if '條碼' not in df.columns:
+        st.error("數據框中缺少 '條碼' 列")
+        return
+    
     item = df[df['條碼'] == barcode]
     if not item.empty:
-        st.success(f"找到商品：{item['商品名稱'].values[0]}")
-        st.write(f"當前庫存數量：{item['數量'].values[0]}")
+        st.success(f"找到商品：{item['商品名稱'].values[0] if '商品名稱' in item.columns else '未知商品'}")
+        st.write(f"當前庫存數量：{item['數量'].values[0] if '數量' in item.columns else '未知數量'}")
         if item['檢貨狀態'].values[0] != '已檢貨':
             if st.button("標記為已檢貨"):
                 df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
