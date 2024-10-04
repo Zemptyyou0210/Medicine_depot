@@ -7,12 +7,14 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2.credentials import Credentials
+from google.oauth2.credentials import Credentials
+from googleapiclient.http import MediaFileUpload
 
 # 設置頁面
 st.set_page_config(page_title="庫存管理系統", layout="wide")
 
 # 設置憑證路徑
-client_secrets_file = 'D:\python\client_secret_728177167304-eukd0t8rrba1q0o746alihr884ihqjfh.apps.googleusercontent.com.json'
+# client_secrets_file = 'D:\python\client_secret_728177167304-eukd0t8rrba1q0o746alihr884ihqjfh.apps.googleusercontent.com.json'
 
 # 設置 OAUTHLIB_INSECURE_TRANSPORT 為 1 (僅用於本地測試，生產環境中不要這樣做)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
@@ -21,7 +23,7 @@ os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 st.title("庫存管理系統")
 
 # 功能選擇
-function = st.sidebar.radio("選擇功能", ("上傳清單", "從 Google Drive 讀取", "檢貨", "收貨"))
+function = st.sidebar.radio("選擇功能", ("上傳清單", "從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"))
 
 # 加載數據
 @st.cache_data
@@ -74,6 +76,37 @@ barcode_scanner_js = """
     }
 </style>
 """
+
+# 添加以下函數來獲取 Google Drive 服務
+def get_drive_service():
+    creds = Credentials.from_authorized_user_info(st.secrets["google_credentials"])
+    return build('drive', 'v3', credentials=creds)
+
+# 添加以下函數來上傳 Excel 文件到 Google Drive
+def upload_to_drive(df, filename):
+    drive_service = get_drive_service()
+    
+    # 將 DataFrame 轉換為 Excel 文件
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Inventory')
+    output.seek(0)
+    
+    # 定義文件元數據
+    file_metadata = {
+        'name': filename,
+        'parents': ['1GS8VEll4sC3JJwwsUmP7YZhIGmmyAf_S']  # 指定的資料夾 ID
+    }
+    
+    # 創建媒體文件
+    media = MediaFileUpload(output, 
+                            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            resumable=True)
+    
+    # 執行文件上傳
+    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    
+    return file.get('id')
 
 # 上傳清單
 if function == "上傳清單":
@@ -218,3 +251,18 @@ elif function == "收貨":
 # 顯示當前庫存
 st.header("當前庫存")
 st.write(data)
+
+# 假設您已經有了一個函數來獲取最終的貨物結果
+def get_final_inventory():
+    # 這裡應該是您獲取最終庫存數據的邏輯
+    # 返回一個 pandas DataFrame
+    pass
+
+# 在您的 Streamlit 應用中調用此函數
+if function == "備份到 Google Drive":
+    if st.button('備份到 Google Drive'):
+        try:
+            file_id = upload_to_drive(get_final_inventory(), 'Inventory_Backup.xlsx')
+            st.success(f'備份成功！文件 ID: {file_id}')
+        except Exception as e:
+            st.error(f'備份失敗：{str(e)}')
