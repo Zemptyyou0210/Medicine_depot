@@ -142,11 +142,17 @@ def check_inventory():
                     type: "LiveStream",
                     target: document.querySelector('#scanner-container'),
                     constraints: {
-                        width: 640,
-                        height: 480,
+                        width: {min: 640},
+                        height: {min: 480},
+                        aspectRatio: {min: 1, max: 2},
                         facingMode: "environment"
                     },
                 },
+                locator: {
+                    patchSize: "medium",
+                    halfSample: true
+                },
+                numOfWorkers: 2,
                 decoder: {
                     readers: [
                         "ean_reader",
@@ -174,8 +180,7 @@ def check_inventory():
                         }
                     }
                 },
-                locate: true,
-                frequency: 10
+                locate: true
             }, function(err) {
                 if (err) {
                     console.log(err);
@@ -348,14 +353,27 @@ st.markdown("""
 <style>
 #scanner-container {
     position: relative;
-    width: 320px;
-    height: 240px;
+    width: 100%;
+    max-width: 640px;
+    height: 480px;
     overflow: hidden;
+    margin: auto;
 }
 #scanner-container video {
-    width: 320px;
-    height: 240px;
+    width: 100%;
+    height: 100%;
     object-fit: cover;
+}
+#start-scanner {
+    display: block;
+    margin: 10px auto;
+    padding: 10px 20px;
+    font-size: 16px;
+}
+#scanner-status {
+    text-align: center;
+    margin-top: 10px;
+    font-weight: bold;
 }
 </style>
 """, unsafe_allow_html=True)
