@@ -180,10 +180,25 @@ def check_inventory():
 
             Quagga.onDetected(function(result) {
                 var code = result.codeResult.code;
-                document.querySelector('#barcode-input').value = code;
-                document.querySelector('#barcode-input').dispatchEvent(new Event('change'));
                 document.querySelector('#scanner-status').textContent = "已掃描到條碼：" + code;
-                // 不要自動停止掃描器
+                
+                // 更新 Streamlit 的輸入欄位
+                var streamlitInput = parent.document.querySelector('.stTextInput input');
+                if (streamlitInput) {
+                    streamlitInput.value = code;
+                    streamlitInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    
+                    // 觸發表單提交
+                    var submitButton = parent.document.querySelector('button[kind="primaryFormSubmit"]');
+                    if (submitButton) {
+                        submitButton.click();
+                    }
+                }
+                
+                // 停止掃描器
+                Quagga.stop();
+                scannerIsRunning = false;
+                document.querySelector('#start-scanner').textContent = "開始掃描";
             });
         }
 
