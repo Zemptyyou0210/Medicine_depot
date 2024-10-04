@@ -99,6 +99,15 @@ def check_inventory():
 
     df = st.session_state['inventory_df']
     
+    # 顯示當前庫存狀態
+    display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
+    df_display = df[display_columns]
+    st.write("當前庫存狀態：")
+    st.dataframe(df_display.style.applymap(
+        lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
+        subset=['檢貨狀態']
+    ))
+
     # 添加條碼掃描功能
     barcode_scanner_html = """
     <div id="scanner-container"></div>
@@ -168,10 +177,7 @@ def check_inventory():
                     }
                 }
                 
-                // 停止掃描器
-                Quagga.stop();
-                scannerIsRunning = false;
-                document.querySelector('#start-scanner').textContent = "開始掃描";
+                // 不停止掃描器，繼續掃描下一個商品
             });
         }
 
