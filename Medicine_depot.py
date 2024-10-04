@@ -9,6 +9,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from google.oauth2.credentials import Credentials
 from google.oauth2.credentials import Credentials
 from googleapiclient.http import MediaFileUpload
+from google.oauth2 import service_account
 
 # 設置頁面
 st.set_page_config(page_title="庫存管理系統", layout="wide")
@@ -79,8 +80,16 @@ barcode_scanner_js = """
 
 # 添加以下函數來獲取 Google Drive 服務
 def get_drive_service():
-    creds = Credentials.from_authorized_user_info(st.secrets["google_credentials"])
-    return build('drive', 'v3', credentials=creds)
+    # 創建憑證
+    credentials = service_account.Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=['https://www.googleapis.com/auth/drive.file']
+    )
+    
+    # 創建 Drive API 客戶端
+    drive_service = build('drive', 'v3', credentials=credentials)
+    
+    return drive_service
 
 # 添加以下函數來上傳 Excel 文件到 Google Drive
 def upload_to_drive(df, filename):
