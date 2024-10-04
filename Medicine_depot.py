@@ -252,6 +252,7 @@ def check_inventory():
     if submit_button or barcode:
         df = check_and_mark_item(df, barcode)
         st.session_state['inventory_df'] = df  # 更新 session state 中的數據
+        st.rerun()  # 強制重新運行應用以刷新顯示
 
     # 顯示檢貨進度
     total_items = len(df)
