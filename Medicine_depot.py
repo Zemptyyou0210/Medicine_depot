@@ -114,10 +114,9 @@ def read_excel_from_drive(file_id):
 # Streamlit 應用程式主函數
 def main():
     st.title("藥品庫存管理系統")
-
-    # 功能選擇
-    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"), key="function_selection")
-
+    
+    function = create_sidebar()
+    
     if function == "從 Google Drive 讀取":
         read_from_drive()
     elif function == "檢貨":
@@ -126,6 +125,17 @@ def main():
         receive_goods()
     elif function == "備份到 Google Drive":
         backup_to_drive()
+    
+    # 添加一個隱藏的按鈕來觸發重新運行
+    if st.button('Refresh', key='refresh_button', help='Click to refresh'):
+        st.experimental_rerun()
+
+def create_sidebar():
+    return st.sidebar.radio(
+        "選擇功能",
+        ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"),
+        key="function_selection"
+    )
 
 def read_from_drive():
     # 實現從 Google Drive 讀取的邏輯
