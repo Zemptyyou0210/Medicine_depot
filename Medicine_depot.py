@@ -87,6 +87,57 @@ def test_drive_access():
     except Exception as e:
         st.error(f"訪問 Google Drive 時發生錯誤: {str(e)}")
 
+def format_ean13(barcode):
+    """將條碼格式化為 EAN-13 格式"""
+    barcode = str(barcode).zfill(13)  # 補零至 13 位
+    return f"{barcode[:1]} {barcode[1:7]} {barcode[7:]}"  # 格式化顯示
+
+def check_and_mark_item(df, barcode):
+    if '條碼' not in df.columns:
+        st.error("數據框中缺少 '條碼' 列")
+        return df
+    
+    # 首先嘗試完全匹配
+    item = df[df['條碼'].astype(str).str.zfill(13) == str(barcode).zfill(13)]
+    
+    if item.empty:
+        # 如果完全匹配失敗，嘗試部分匹配，但要求更嚴格的匹配
+        item = df[df['條碼'].astype(str).str.zfill(13).str.contains(f"^{str(barcode).zfill(13)}$|^{str(barcode).zfill(13)}|{str(barcode).zfill(13)}$")]
+    
+    if not item.empty:
+        if len(item) > 1:
+            st.warning(f"找到多個匹配的商品，請選擇正確的商品：")
+            for index, row in item.iterrows():
+                formatted_barcode = format_ean13(row['條碼'])
+                if st.button(f"{row['藥品名稱']} - 條碼: {formatted_barcode}", key=f"select_{index}"):
+                    selected_item = row
+                    break
+            else:
+                st.info("請選擇一個商品")
+                return df
+        else:
+            selected_item = item.iloc[0]
+
+        st.success(f"選擇的商品：{selected_item['藥品名稱']}")
+        formatted_barcode = format_ean13(selected_item['條碼'])
+        st.write(f"條碼：{formatted_barcode}")
+        for col in ['藥庫位置', '盤撥量', '藥庫庫存']:
+            if col in selected_item.index:
+                st.write(f"{col}：{selected_item[col]}")
+        
+        if '檢貨狀態' in selected_item.index:
+            if selected_item['檢貨狀態'] != '已檢貨':
+                df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'] = '已檢貨'
+                st.success("商品已自動標記為已檢貨")
+            else:
+                st.info("此商品已經檢貨")
+        else:
+            st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
+    else:
+        st.error(f"未找到條碼為 {format_ean13(barcode)} 的商品，請檢查條碼是否正確")
+    
+    return df
+
 def check_inventory():
     st.subheader("檢貨")
     
@@ -262,43 +313,6 @@ def check_inventory():
     progress = checked_items / total_items
     st.progress(progress)
     st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
-
-def check_and_mark_item(df, barcode):
-    if '條碼' not in df.columns:
-        st.error("數據框中缺少 '條碼' 列")
-        return df
-    
-    # 首先嘗試完全匹配
-    item = df[df['條碼'].astype(str) == str(barcode)]
-    
-    if item.empty:
-        # 如果完全匹配失敗，嘗試部分匹配，但要求更嚴格的匹配
-        item = df[df['條碼'].astype(str).str.contains(f"^{barcode}$|^{barcode}|{barcode}$")]
-    
-    if not item.empty:
-        if len(item) > 1:
-            st.warning(f"找到多個匹配的商品，請確認：")
-            st.write(item[['藥品名稱', '條碼', '檢貨狀態']])
-            return df
-        
-        st.success(f"找到商品：{item['藥品名稱'].values[0] if '藥品名稱' in item.columns else '未知商品'}")
-        for col in ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存']:
-            if col in item.columns:
-                st.write(f"{col}：{item[col].values[0]}")
-        
-        if '檢貨狀態' in item.columns:
-            if item['檢貨狀態'].values[0] != '已檢貨':
-                # 只更新完全匹配的條碼
-                df.loc[df['條碼'].astype(str) == str(barcode), '檢貨狀態'] = '已檢貨'
-                st.success("商品已自動標記為已檢貨")
-            else:
-                st.info("此商品已經檢貨")
-        else:
-            st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
-    else:
-        st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
-    
-    return df
 
 def receive_inventory():
     st.subheader("收貨")
