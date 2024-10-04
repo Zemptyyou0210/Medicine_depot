@@ -88,27 +88,17 @@ def check_inventory():
 
     df = st.session_state['inventory_df']
     
-    # 顯示數據框的列名，以便調試
-    st.write("數據框列名：", df.columns.tolist())
-    
-    # 檢查 '檢貨狀態' 列是否存在
-    if '檢貨狀態' not in df.columns:
-        st.warning("數據框中缺少 '檢貨狀態' 列。正在添加該列...")
-        df['檢貨狀態'] = '未檢貨'
-        st.session_state['inventory_df'] = df
-    
+    # 只選擇需要的列
+    display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
+    df_display = df[display_columns]
+
+    # 顯示當前庫存狀態
     st.write("當前庫存狀態：")
-    try:
-        styled_df = df.style.applymap(
-            lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1', 
-            subset=['檢貨狀態']
-        )
-        st.dataframe(styled_df)
-    except Exception as e:
-        st.error(f"顯示數據框時發生錯誤: {str(e)}")
-        st.write("顯示原始數據框：")
-        st.dataframe(df)
-    
+    st.dataframe(df_display.style.applymap(
+        lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
+        subset=['檢貨狀態']
+    ))
+
     # 添加條碼掃描功能
     barcode_scanner_html = """
     <div id="scanner-container"></div>
@@ -122,7 +112,10 @@ def check_inventory():
                 inputStream: {
                     name: "Live",
                     type: "LiveStream",
-                    target: document.querySelector('#scanner-container')
+                    target: document.querySelector('#scanner-container'),
+                    constraints: {
+                        facingMode: "environment"  // 使用後置攝像頭
+                    },
                 },
                 decoder: {
                     readers: ["ean_reader", "ean_8_reader", "code_128_reader"]
@@ -142,43 +135,56 @@ def check_inventory():
                 document.querySelector('#barcode-input').dispatchEvent(new Event('input'));
                 Quagga.stop();
                 scannerIsRunning = false;
+                // 觸發表單提交
+                document.querySelector('form').submit();
             });
         }
 
-        if (scannerIsRunning) {
-            Quagga.stop();
-        } else {
+        // 檢查是否已經獲得了相機權限
+        if (localStorage.getItem('cameraPermission') === 'granted') {
             startScanner();
+        } else {
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(function(stream) {
+                    localStorage.setItem('cameraPermission', 'granted');
+                    startScanner();
+                    stream.getTracks().forEach(track => track.stop());
+                })
+                .catch(function(err) {
+                    console.log("未能獲得相機權限: ", err);
+                });
         }
     </script>
     """
     
     components.html(barcode_scanner_html, height=300)
     
-    barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
-    
-    if st.button("檢查商品"):
-        if barcode:
-            check_item(df, barcode)
-        else:
-            st.warning("請輸入商品條碼")
-    
+    # 使用 form 來確保條碼輸入後可以立即處理
+    with st.form(key='barcode_form'):
+        barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
+        submit_button = st.form_submit_button("檢查商品")
+
+    if submit_button or barcode:
+        check_item(df, barcode, display_columns)
+
+    # 顯示檢貨進度
     total_items = len(df)
     checked_items = len(df[df['檢貨狀態'] == '已檢貨'])
     progress = checked_items / total_items
     st.progress(progress)
     st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
 
-def check_item(df, barcode):
-    # 確保 '條碼' 列存在
+def check_item(df, barcode, display_columns):
     if '條碼' not in df.columns:
         st.error("數據框中缺少 '條碼' 列")
         return
     
     item = df[df['條碼'] == barcode]
     if not item.empty:
-        st.success(f"找到商品：{item['商品名稱'].values[0] if '商品名稱' in item.columns else '未知商品'}")
-        st.write(f"當前庫存數量：{item['數量'].values[0] if '數量' in item.columns else '未知數量'}")
+        st.success(f"找到商品：{item['藥品名稱'].values[0]}")
+        for col in display_columns:
+            if col in item.columns:
+                st.write(f"{col}：{item[col].values[0]}")
         if item['檢貨狀態'].values[0] != '已檢貨':
             if st.button("標記為已檢貨"):
                 df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
@@ -190,24 +196,79 @@ def check_item(df, barcode):
     else:
         st.error("未找到該商品，請檢查條碼是否正確")
 
+def receive_inventory():
+    st.subheader("收貨")
+    
+    if 'inventory_df' not in st.session_state:
+        st.warning("請先從 Google Drive 讀取庫存文件")
+        if st.button("前往讀取數據"):
+            st.session_state.function_selection = "從 Google Drive 讀取"
+            st.rerun()
+        return
+
+    df = st.session_state['inventory_df']
+    
+    # 只選擇需要的列
+    display_columns = ['藥品名稱', '盤撥量', '收貨狀態']
+    df_display = df[display_columns]
+
+    # 顯示當前收貨狀態
+    st.write("當前收貨狀態：")
+    st.dataframe(df_display.style.applymap(
+        lambda x: 'background-color: #90EE90' if x == '已收貨' else 'background-color: #FFB6C1',
+        subset=['收貨狀態']
+    ))
+
+    # 使用 form 來確保條碼輸入後可以立即處理
+    with st.form(key='barcode_form'):
+        barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
+        submit_button = st.form_submit_button("檢查商品")
+
+    if submit_button or barcode:
+        receive_item(df, barcode, display_columns)
+
+    # 顯示收貨進度
+    total_items = len(df)
+    received_items = len(df[df['收貨狀態'] == '已收貨'])
+    progress = received_items / total_items
+    st.progress(progress)
+    st.write(f"收貨進度：{received_items}/{total_items} ({progress:.2%})")
+
+def receive_item(df, barcode, display_columns):
+    if '條碼' not in df.columns:
+        st.error("數據框中缺少 '條碼' 列")
+        return
+    
+    item = df[df['條碼'] == barcode]
+    if not item.empty:
+        st.success(f"找到商品：{item['藥品名稱'].values[0]}")
+        for col in display_columns:
+            if col in item.columns:
+                st.write(f"{col}：{item[col].values[0]}")
+        if item['收貨狀態'].values[0] != '已收貨':
+            if st.button("標記為已收貨"):
+                df.loc[df['條碼'] == barcode, '收貨狀態'] = '已收貨'
+                st.session_state['inventory_df'] = df
+                st.success("商品已標記為已收貨")
+                st.rerun()
+        else:
+            st.info("此商品已經收貨")
+    else:
+        st.error("未找到該商品，請檢查條碼是否正確")
+
 def main():
     st.title("藥品庫存管理系統")
 
-    # 側邊欄 - 功能選擇
-    function = st.sidebar.radio(
-        "選擇功能",
-        ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"),
-        key="function_selection"
-    )
+    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"), key="function_selection")
 
     if function == "從 Google Drive 讀取":
         read_from_drive()
     elif function == "檢貨":
         check_inventory()
     elif function == "收貨":
-        st.write("收貨功能尚未實現")
+        receive_inventory()
     elif function == "備份到 Google Drive":
-        st.write("備份功能尚未實現")
+        backup_to_drive()
 
     if st.button("測試 Google Drive 訪問"):
         test_drive_access()
