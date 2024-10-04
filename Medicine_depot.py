@@ -117,6 +117,26 @@ def upload_to_drive(df, filename):
     
     return file.get('id')
 
+# 讀取文件函數
+def read_file(file_id):
+    drive_service = get_drive_service()
+    request = drive_service.files().get_media(fileId=file_id)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
+    done = False
+    while done is False:
+        status, done = downloader.next_chunk()
+    fh.seek(0)
+    return fh.read()
+
+# 寫入文件函數
+def write_file(filename, content, mime_type, folder_id):
+    drive_service = get_drive_service()
+    file_metadata = {'name': filename, 'parents': [folder_id]}
+    media = MediaIoBaseUpload(io.BytesIO(content), mimetype=mime_type)
+    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+    return file.get('id')
+
 # 上傳清單
 if function == "上傳清單":
     st.header("上傳清單")
