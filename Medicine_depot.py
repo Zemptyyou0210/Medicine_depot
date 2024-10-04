@@ -65,6 +65,12 @@ def read_from_drive():
             df['檢貨狀態'] = '未檢貨'
             st.info("已添加 '檢貨狀態' 列到數據中")
 
+        # 確保條碼列被正確讀取
+        if '條碼' in df.columns:
+            df['條碼'] = df['條碼'].astype(str).str.strip()
+        else:
+            st.error("數據中缺少 '條碼' 列")
+
         st.session_state['inventory_df'] = df
         st.success(f"已成功讀取 {selected_file}")
         st.write(df)
@@ -225,11 +231,21 @@ def check_inventory():
         st.warning("無法顯示檢貨進度，因為數據框中缺少 '檢貨狀態' 列")
 
 def check_item(df, barcode, display_columns):
+    st.write(f"正在查找條碼：{barcode}")
+    st.write("數據框列名：", df.columns.tolist())
+    
     if '條碼' not in df.columns:
         st.error("數據框中缺少 '條碼' 列")
         return
     
-    item = df[df['條碼'] == barcode]
+    # 顯示所有條碼，以便進行調試
+    st.write("數據框中的所有條碼：", df['條碼'].tolist())
+    
+    # 嘗試不同的匹配方法
+    item = df[df['條碼'].astype(str) == str(barcode)]
+    if item.empty:
+        item = df[df['條碼'].astype(str).str.contains(str(barcode))]
+    
     if not item.empty:
         st.success(f"找到商品：{item['藥品名稱'].values[0] if '藥品名稱' in item.columns else '未知商品'}")
         for col in display_columns:
@@ -237,7 +253,7 @@ def check_item(df, barcode, display_columns):
                 st.write(f"{col}：{item[col].values[0]}")
         if '檢貨狀態' in item.columns and item['檢貨狀態'].values[0] != '已檢貨':
             if st.button("標記為已檢貨"):
-                df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
+                df.loc[df['條碼'].astype(str) == str(barcode), '檢貨狀態'] = '已檢貨'
                 st.session_state['inventory_df'] = df
                 st.success("商品已標記為已檢貨")
                 st.rerun()
@@ -246,7 +262,10 @@ def check_item(df, barcode, display_columns):
         else:
             st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
     else:
-        st.error("未找到該商品，請檢查條碼是否正確")
+        st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
+        # 顯示與輸入條碼最相似的幾個條碼，以幫助診斷問題
+        similar_barcodes = df['條碼'].astype(str).sort_values(key=lambda x: x.str.find(str(barcode)), ascending=True).head()
+        st.write("最相似的條碼：", similar_barcodes.tolist())
 
 def receive_inventory():
     st.subheader("收貨")
