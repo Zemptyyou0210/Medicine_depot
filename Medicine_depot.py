@@ -99,36 +99,9 @@ def check_inventory():
 
     df = st.session_state['inventory_df']
     
-    # 顯示所有可用的列
-    st.write("可用的列：", df.columns.tolist())
-    
-    # 定義我們想要顯示的列
-    desired_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
-    
-    # 檢查哪些列實際存在於數據框中
-    available_columns = [col for col in desired_columns if col in df.columns]
-    
-    if not available_columns:
-        st.error("數據框中沒有找到任何所需的列。請檢查數據格式。")
-        return
-    
-    # 只選擇可用的列
-    df_display = df[available_columns]
-
-    # 顯示當前庫存狀態
-    st.write("當前庫存狀態：")
-    if '檢貨狀態' in available_columns:
-        st.dataframe(df_display.style.applymap(
-            lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
-            subset=['檢貨狀態']
-        ))
-    else:
-        st.dataframe(df_display)
-
     # 添加條碼掃描功能
     barcode_scanner_html = """
     <div id="scanner-container"></div>
-    <input type="text" id="barcode-input" style="display:none;">
     <button id="start-scanner">開始/停止掃描</button>
     <div id="scanner-status"></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
@@ -142,8 +115,8 @@ def check_inventory():
                     type: "LiveStream",
                     target: document.querySelector('#scanner-container'),
                     constraints: {
-                        width: {min: 640},
-                        height: {min: 480},
+                        width: {min: 320},
+                        height: {min: 240},
                         aspectRatio: {min: 1, max: 2},
                         facingMode: "environment"
                     },
@@ -182,7 +155,7 @@ def check_inventory():
                 var code = result.codeResult.code;
                 document.querySelector('#scanner-status').textContent = "已掃描到條碼：" + code;
                 
-                // 更新 Streamlit 的輸入欄位
+                // 更新 Streamlit 的輸入欄位並觸發檢查
                 var streamlitInput = parent.document.querySelector('.stTextInput input');
                 if (streamlitInput) {
                     streamlitInput.value = code;
@@ -209,91 +182,81 @@ def check_inventory():
                 this.textContent = "開始掃描";
                 document.querySelector('#scanner-status').textContent = "掃描器已停止";
             } else {
-                // 針對 iOS 的相機權限請求
-                if (navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function') {
-                    navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
-                        .then(function(stream) {
-                            stream.getTracks().forEach(track => track.stop());
-                            startScanner();
-                            this.textContent = "停止掃描";
-                        })
-                        .catch(function(err) {
-                            console.log("無法獲取相機權限: ", err);
-                            document.querySelector('#scanner-status').textContent = "無法獲取相機權限：" + err;
-                        });
-                } else {
-                    console.log("此瀏覽器不支持 getUserMedia");
-                    document.querySelector('#scanner-status').textContent = "此瀏覽器不支持相機訪問";
-                }
-            }
-        });
-
-        // 處理 iOS 上的方向變化
-        window.addEventListener('orientationchange', function() {
-            if (scannerIsRunning) {
-                Quagga.stop();
                 startScanner();
+                this.textContent = "停止掃描";
             }
         });
     </script>
     """
     
-    components.html(barcode_scanner_html, height=600)
+    st.markdown("""
+    <style>
+    #scanner-container {
+        position: relative;
+        width: 100%;
+        max-width: 320px;
+        height: 240px;
+        overflow: hidden;
+        margin: auto;
+    }
+    #scanner-container video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    #start-scanner {
+        display: block;
+        margin: 10px auto;
+        padding: 10px 20px;
+        font-size: 16px;
+    }
+    #scanner-status {
+        text-align: center;
+        margin-top: 10px;
+        font-weight: bold;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    components.html(barcode_scanner_html, height=400)
 
-    # 使用 form 來確保條碼輸入後可以立即處理
+    # 使用 form 來處理條碼輸入
     with st.form(key='barcode_form'):
         barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
         submit_button = st.form_submit_button("檢查商品")
 
     if submit_button or barcode:
-        check_item(df, barcode, available_columns)
+        check_and_mark_item(df, barcode)
 
-    # 顯示檢貨進度
-    if '檢貨狀態' in df.columns:
-        total_items = len(df)
-        checked_items = len(df[df['檢貨狀態'] == '已檢貨'])
-        progress = checked_items / total_items
-        st.progress(progress)
-        st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
-    else:
-        st.warning("無法顯示檢貨進度，因為數據框中缺少 '檢貨狀態' 列")
-
-def check_item(df, barcode, display_columns):
-    st.write(f"正在查找條碼：{barcode}")
-    st.write("數據框列名：", df.columns.tolist())
-    
+def check_and_mark_item(df, barcode):
     if '條碼' not in df.columns:
         st.error("數據框中缺少 '條碼' 列")
         return
     
-    # 顯示所有條碼，以便進行調試
-    st.write("數據框中的所有條碼：", df['條碼'].tolist())
-    
-    # 嘗試不同的匹配方法
     item = df[df['條碼'].astype(str) == str(barcode)]
-    if item.empty:
-        item = df[df['條碼'].astype(str).str.contains(str(barcode))]
-    
     if not item.empty:
         st.success(f"找到商品：{item['藥品名稱'].values[0] if '藥品名稱' in item.columns else '未知商品'}")
-        for col in display_columns:
+        for col in ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存']:
             if col in item.columns:
                 st.write(f"{col}：{item[col].values[0]}")
+        
         if '檢貨狀態' in item.columns and item['檢貨狀態'].values[0] != '已檢貨':
-            if st.button("標記為已檢貨"):
-                df.loc[df['條碼'].astype(str) == str(barcode), '檢貨狀態'] = '已檢貨'
-                st.session_state['inventory_df'] = df
-                st.success("商品已標記為已檢貨")
-                st.rerun()
+            df.loc[df['條碼'].astype(str) == str(barcode), '檢貨狀態'] = '已檢貨'
+            st.session_state['inventory_df'] = df
+            st.success("商品已自動標記為已檢貨")
         elif '檢貨狀態' in item.columns:
             st.info("此商品已經檢貨")
         else:
             st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
     else:
         st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
-        # 顯示與輸入條碼最相似的幾個條碼，以幫助診斷問題
-        similar_barcodes = df['條碼'].astype(str).sort_values(key=lambda x: x.str.find(str(barcode)), ascending=True).head()
-        st.write("最相似的條碼：", similar_barcodes.tolist())
+
+    # 顯示檢貨進度
+    total_items = len(df)
+    checked_items = len(df[df['檢貨狀態'] == '已檢貨'])
+    progress = checked_items / total_items
+    st.progress(progress)
+    st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
 
 def receive_inventory():
     st.subheader("收貨")
