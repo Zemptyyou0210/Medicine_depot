@@ -75,6 +75,29 @@ def test_drive_access():
     except Exception as e:
         st.error(f"訪問 Google Drive 時發生錯誤: {str(e)}")
 
+def check_inventory():
+    st.subheader("檢貨")
+    if 'inventory_df' not in st.session_state:
+        st.warning("請先從 Google Drive 讀取庫存文件")
+        return
+
+    df = st.session_state['inventory_df']
+
+def check_item(df, barcode):
+    item = df[df['條碼'] == barcode]
+    if not item.empty:
+        st.success(f"找到商品：{item['商品名稱'].values[0]}")
+        st.write(f"當前庫存數量：{item['數量'].values[0]}")
+        if item['檢貨狀態'].values[0] != '已檢貨':
+            if st.button("標記為已檢貨"):
+                df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
+                st.session_state['inventory_df'] = df
+                st.success("商品已標記為已檢貨")
+        else:
+            st.info("此商品已經檢貨")
+    else:
+        st.error("未找到該商品，請檢查條碼是否正確")
+
 def main():
     st.title("藥品庫存管理系統")
 
@@ -88,7 +111,7 @@ def main():
     if function == "從 Google Drive 讀取":
         read_from_drive()
     elif function == "檢貨":
-        st.write("檢貨功能尚未實現")
+        check_inventory()
     elif function == "收貨":
         st.write("收貨功能尚未實現")
     elif function == "備份到 Google Drive":
