@@ -116,7 +116,7 @@ def main():
     st.title("藥品庫存管理系統")
 
     # 功能選擇
-    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"))
+    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"), key="function_selection")
 
     if function == "從 Google Drive 讀取":
         read_from_drive()
