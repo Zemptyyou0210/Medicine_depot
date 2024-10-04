@@ -22,12 +22,12 @@ drive_service = create_drive_client()
 def list_files_in_folder(folder_id):
     try:
         results = drive_service.files().list(
-            q=f"'{folder_id}' in parents and (mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' or mimeType='application/vnd.ms-excel')",
-            fields="files(id, name)").execute()
+            q=f"'{folder_id}' in parents",  # 移除 MIME 類型檢查
+            fields="files(id, name, mimeType)").execute()
         files = results.get('files', [])
         st.write(f"找到 {len(files)} 個文件")
         for file in files:
-            st.write(f"文件名: {file['name']}, ID: {file['id']}")
+            st.write(f"文件名: {file['name']}, ID: {file['id']}, 類型: {file['mimeType']}")
         return files
     except Exception as e:
         st.error(f"獲取文件列表時發生錯誤: {str(e)}")
@@ -65,6 +65,16 @@ def read_from_drive():
     except Exception as e:
         st.error(f"讀取文件時發生錯誤: {str(e)}")
 
+def test_drive_access():
+    try:
+        results = drive_service.files().list(pageSize=10, fields="files(id, name, mimeType)").execute()
+        items = results.get('files', [])
+        st.write('服務帳號可以訪問 Google Drive。找到的文件：')
+        for item in items:
+            st.write(f"{item['name']} ({item['id']}) - {item['mimeType']}")
+    except Exception as e:
+        st.error(f"訪問 Google Drive 時發生錯誤: {str(e)}")
+
 def main():
     st.title("藥品庫存管理系統")
 
@@ -83,6 +93,9 @@ def main():
         st.write("收貨功能尚未實現")
     elif function == "備份到 Google Drive":
         st.write("備份功能尚未實現")
+
+    if st.button("測試 Google Drive 訪問"):
+        test_drive_access()
 
 if __name__ == "__main__":
     main()
