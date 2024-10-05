@@ -167,32 +167,24 @@ def check_inventory():
         <video id="video" playsinline autoplay></video>
     </div>
     <div id="results"></div>
-    <button id="start-scanner">開始掃描</button>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <script>
         const codeReader = new ZXing.BrowserMultiFormatReader()
         let selectedDeviceId;
-        let scanning = false;
-
-        document.getElementById('start-scanner').addEventListener('click', () => {
-            if (scanning) {
-                stopScanning();
-            } else {
-                startScanning();
-            }
-        });
+        let lastScanTime = 0;
 
         function startScanning() {
-            scanning = true;
-            document.getElementById('start-scanner').textContent = '停止掃描';
             codeReader.listVideoInputDevices()
                 .then((videoInputDevices) => {
-                    selectedDeviceId = videoInputDevices[0].deviceId
+                    selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId  // 使用最後一個設備（通常是後置攝像頭）
                     codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
                         if (result) {
-                            document.getElementById('results').textContent = "掃描到條碼: " + result.text;
-                            window.Streamlit.setComponentValue(result.text);
-                            stopScanning();
+                            const currentTime = new Date().getTime();
+                            if (currentTime - lastScanTime > 2000) {  // 2秒內只處理一次掃描結果
+                                lastScanTime = currentTime;
+                                document.getElementById('results').textContent = "掃描到條碼: " + result.text;
+                                window.Streamlit.setComponentValue(result.text);
+                            }
                         }
                         if (err && !(err instanceof ZXing.NotFoundException)) {
                             console.error(err)
@@ -204,11 +196,7 @@ def check_inventory():
                 })
         }
 
-        function stopScanning() {
-            scanning = false;
-            document.getElementById('start-scanner').textContent = '開始掃描';
-            codeReader.reset();
-        }
+        document.addEventListener('DOMContentLoaded', startScanning);
     </script>
     <style>
     #scanner-container {
@@ -228,12 +216,6 @@ def check_inventory():
         font-size: 18px;
         font-weight: bold;
         text-align: center;
-    }
-    #start-scanner {
-        display: block;
-        margin: 10px auto;
-        padding: 10px 20px;
-        font-size: 16px;
     }
     </style>
     """
