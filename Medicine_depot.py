@@ -183,11 +183,9 @@ def check_inventory():
             codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
                 if (result) {
                     document.getElementById('results').textContent = "掃描到條碼: " + result.text;
-                    // 使用 Streamlit 的組件 API 傳遞掃描結果
                     window.Streamlit.setComponentValue(result.text);
-                    // 暫停掃描以避免重複掃描
                     codeReader.reset();
-                    setTimeout(startScanning, 2000);  // 2秒後重新開始掃描
+                    setTimeout(startScanning, 2000);
                 }
                 if (err && !(err instanceof ZXing.NotFoundException)) {
                     console.error(err)
@@ -221,37 +219,22 @@ def check_inventory():
 
     scanned_barcode = st.empty()
     
-    try:
-        value = components.html(barcode_scanner_html, height=450)
-        st.write(f"組件返回值: {value}")  # 調試信息
-        if value is not None:
-            scanned_barcode.text(f"掃描到的條碼: {value}")
-            st.session_state['scanned_barcode'] = value
-            st.write(f"已將掃描結果 {value} 存入 session state")  # 調試信息
-    except Exception as e:
-        st.error(f"加載條碼掃描器時發生錯誤: {str(e)}")
-
-    st.write(f"Session state 中的掃描結果: {st.session_state.get('scanned_barcode', '無')}")  # 調試信息
-
-    if 'scanned_barcode' in st.session_state and st.session_state['scanned_barcode']:
-        barcode = st.session_state['scanned_barcode']
-        st.write(f"處理條碼: {barcode}")
-        updated_df = check_and_mark_item(df, barcode)
+    value = components.html(barcode_scanner_html, height=450)
+    if value:
+        scanned_barcode.text(f"掃描到的條碼: {value}")
+        updated_df = check_and_mark_item(df, value)
         st.session_state['inventory_df'] = updated_df
-        st.session_state['scanned_barcode'] = ''  # 清除掃描結果
         st.rerun()
 
-    # 保留手動輸入選項作為備用
+    # 手動輸入選項
     st.markdown("---")
-    st.markdown("### 備用選項：手動輸入")
-    with st.form(key='barcode_form'):
-        manual_barcode = st.text_input("手動輸入商品條碼", key="barcode_input")
-        submit_button = st.form_submit_button("檢查商品")
-
-    if submit_button and manual_barcode:
-        updated_df = check_and_mark_item(df, manual_barcode)
-        st.session_state['inventory_df'] = updated_df
-        st.rerun()
+    st.markdown("### 手動輸入")
+    manual_barcode = st.text_input("輸入商品條碼")
+    if st.button("檢查商品"):
+        if manual_barcode:
+            updated_df = check_and_mark_item(df, manual_barcode)
+            st.session_state['inventory_df'] = updated_df
+            st.rerun()
 
     # 顯示檢貨進度
     total_items = len(df)
