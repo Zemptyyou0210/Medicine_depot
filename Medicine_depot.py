@@ -60,16 +60,16 @@ def read_from_drive():
     
     try:
         df = read_excel_from_drive(file_id)
-        # 讀取 Excel 文件後，檢查並添加 '檢貨狀態' 列
-        if '檢貨狀態' not in df.columns:
-            df['檢貨狀態'] = '未檢貨'
-            st.info("已添加 '檢貨狀態' 列到數據中")
-
         # 確保條碼列被正確讀取
         if '條碼' in df.columns:
             df['條碼'] = df['條碼'].astype(str).str.strip()
         else:
             st.error("數據中缺少 '條碼' 列")
+        
+        # 讀取 Excel 文件後，檢查並添加 '檢貨狀態' 列
+        if '檢貨狀態' not in df.columns:
+            df['檢貨狀態'] = '未檢貨'
+            st.info("已添加 '檢貨狀態' 列到數據中")
 
         st.session_state['inventory_df'] = df
         st.success(f"已成功讀取 {selected_file}")
@@ -97,7 +97,6 @@ def check_and_mark_item(df, barcode):
     try:
         if '檢貨狀態' not in df.columns:
             df['檢貨狀態'] = '未檢貨'
-            st.write("添加了 '檢貨狀態' 列")
         
         if '條碼' not in df.columns:
             st.error("數據框中缺少 '條碼' 列")
@@ -106,19 +105,16 @@ def check_and_mark_item(df, barcode):
         st.write(f"數據框中的條碼類型: {df['條碼'].dtype}")
         st.write(f"輸入的條碼類型: {type(barcode)}")
         
-        # 首先嘗試完全匹配
+        # 嘗試完全匹配
         item = df[df['條碼'].astype(str).str.strip() == str(barcode).strip()]
-        st.write(f"完全匹配結果: {len(item)} 項")
         
         if item.empty:
             # 如果完全匹配失敗，嘗試部分匹配
-            item = df[df['條碼'].astype(str).str.strip().str.contains(str(barcode).strip())]
-            st.write(f"部分匹配結果: {len(item)} 項")
+            item = df[df['條碼'].astype(str).str.strip().str.contains(str(barcode).strip(), na=False)]
         
         if not item.empty:
             selected_item = item.iloc[0]
             st.success(f"找到商品：{selected_item['藥品名稱']}")
-            st.write(f"商品詳情: {selected_item.to_dict()}")
             
             if '檢貨狀態' in df.columns:
                 old_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
@@ -133,8 +129,6 @@ def check_and_mark_item(df, barcode):
     except Exception as e:
         st.error(f"處理商品時發生錯誤: {str(e)}")
     
-    st.write("更新後的數據框：")
-    st.write(df)
     return df
 
 def check_inventory():
@@ -163,37 +157,48 @@ def check_inventory():
         <video id="video" playsinline autoplay></video>
     </div>
     <div id="results"></div>
+    <button id="start-scanner">開始掃描</button>
     <script src="https://unpkg.com/@zxing/library@latest"></script>
     <script>
         const codeReader = new ZXing.BrowserMultiFormatReader()
         let selectedDeviceId;
+        let scanning = false;
 
-        function initScanner() {
+        document.getElementById('start-scanner').addEventListener('click', () => {
+            if (scanning) {
+                stopScanning();
+            } else {
+                startScanning();
+            }
+        });
+
+        function startScanning() {
+            scanning = true;
+            document.getElementById('start-scanner').textContent = '停止掃描';
             codeReader.listVideoInputDevices()
                 .then((videoInputDevices) => {
                     selectedDeviceId = videoInputDevices[0].deviceId
-                    startScanning();
+                    codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
+                        if (result) {
+                            document.getElementById('results').textContent = "掃描到條碼: " + result.text;
+                            window.Streamlit.setComponentValue(result.text);
+                            stopScanning();
+                        }
+                        if (err && !(err instanceof ZXing.NotFoundException)) {
+                            console.error(err)
+                        }
+                    })
                 })
                 .catch((err) => {
                     console.error(err)
                 })
         }
 
-        function startScanning() {
-            codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
-                if (result) {
-                    document.getElementById('results').textContent = "掃描到條碼: " + result.text;
-                    window.Streamlit.setComponentValue(result.text);
-                    codeReader.reset();
-                    setTimeout(startScanning, 2000);
-                }
-                if (err && !(err instanceof ZXing.NotFoundException)) {
-                    console.error(err)
-                }
-            })
+        function stopScanning() {
+            scanning = false;
+            document.getElementById('start-scanner').textContent = '開始掃描';
+            codeReader.reset();
         }
-
-        document.addEventListener('DOMContentLoaded', initScanner);
     </script>
     <style>
     #scanner-container {
@@ -214,12 +219,18 @@ def check_inventory():
         font-weight: bold;
         text-align: center;
     }
+    #start-scanner {
+        display: block;
+        margin: 10px auto;
+        padding: 10px 20px;
+        font-size: 16px;
+    }
     </style>
     """
 
     scanned_barcode = st.empty()
     
-    value = components.html(barcode_scanner_html, height=450)
+    value = components.html(barcode_scanner_html, height=500)
     if value:
         scanned_barcode.text(f"掃描到的條碼: {value}")
         updated_df = check_and_mark_item(df, value)
