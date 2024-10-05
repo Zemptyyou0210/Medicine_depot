@@ -222,25 +222,37 @@ def check_inventory():
     </style>
     """
 
-    components.html(barcode_scanner_html, height=600)
+    components.html(barcode_scanner_html, height=600, key="barcode_scanner")
 
-    scanned_barcode = st.text_input("掃描到的條碼", key="scanned_barcode")
+    # 使用 st.empty() 創建一個可以動態更新的元素
+    result_placeholder = st.empty()
+
+    # 獲取掃描結果
+    scanned_barcode = st.session_state.get('scanned_barcode', '')
 
     if scanned_barcode:
-        df = check_and_mark_item(df, scanned_barcode)
+        # 更新掃描結果顯示
+        result_placeholder.text(f"掃描到的條碼: {scanned_barcode}")
+        # 檢查並標記商品
+        df = check_and_mark_item(st.session_state['inventory_df'], scanned_barcode)
+        # 更新 session state 中的數據
+        st.session_state['inventory_df'] = df
+        # 清除掃描結果，為下一次掃描做準備
+        st.session_state['scanned_barcode'] = ''
+        # 強制重新運行應用以更新顯示
+        st.experimental_rerun()
 
-    # 保留手動輸入選項
+    # 保留手動輸入選項作為備用
+    st.markdown("---")
+    st.markdown("### 備用選項：手動輸入")
     with st.form(key='barcode_form'):
         manual_barcode = st.text_input("手動輸入商品條碼", key="barcode_input")
         submit_button = st.form_submit_button("檢查商品")
 
     if submit_button and manual_barcode:
-        df = check_and_mark_item(df, manual_barcode)
-
-    if st.button("確認更新"):
-        st.session_state['inventory_df'] = df  # 更新 session state 中的數據
-        st.success("數據已更新")
-        st.rerun()  # 強制重新運行應用以刷新顯示
+        df = check_and_mark_item(st.session_state['inventory_df'], manual_barcode)
+        st.session_state['inventory_df'] = df
+        st.experimental_rerun()
 
     # 顯示檢貨進度
     total_items = len(df)
