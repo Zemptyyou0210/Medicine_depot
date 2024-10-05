@@ -107,20 +107,20 @@ def check_and_mark_item(df, barcode):
             st.error("數據框中缺少 '條碼' 列")
             return df
         
-        st.write(f"數據框中的條碼類型: {df['條碼'].dtype}")
-        st.write(f"輸入的條碼類型: {type(barcode)}")
-        
         # 確保條碼是字符串類型
-        df['條碼'] = df['條碼'].astype(str)
-        barcode = str(barcode)
+        df['條碼'] = df['條碼'].astype(str).str.strip()
+        barcode = str(barcode).strip()
+        
+        st.write(f"數據框中的條碼類型: {df['條碼'].dtype}")
+        st.write(f"輸入的條碼: {barcode}")
         
         # 嘗試完全匹配
-        item = df[df['條碼'].str.strip() == barcode.strip()]
+        item = df[df['條碼'] == barcode]
         st.write(f"完全匹配結果數: {len(item)}")
         
         if item.empty:
             # 如果完全匹配失敗，嘗試部分匹配
-            item = df[df['條碼'].str.strip().str.contains(barcode.strip(), na=False)]
+            item = df[df['條碼'].str.contains(barcode, na=False)]
             st.write(f"部分匹配結果數: {len(item)}")
         
         if not item.empty:
@@ -128,7 +128,7 @@ def check_and_mark_item(df, barcode):
             st.success(f"找到商品：{selected_item['藥品名稱']}")
             st.write(f"匹配的條碼: {selected_item['條碼']}")
             
-            old_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
+            old_status = selected_item['檢貨狀態']
             df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'] = '已檢貨'
             new_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
             st.write(f"檢貨狀態從 '{old_status}' 更新為 '{new_status}'")
@@ -139,6 +139,7 @@ def check_and_mark_item(df, barcode):
             st.write(df['條碼'].head())
     except Exception as e:
         st.error(f"處理商品時發生錯誤: {str(e)}")
+        st.write(f"錯誤詳情: {traceback.format_exc()}")
     
     return df
 
@@ -231,9 +232,12 @@ def check_inventory():
             # 移除可能的非數字字符
             cleaned_barcode = ''.join(filter(str.isdigit, str(value)))
             st.write(f"處理的條碼: {cleaned_barcode}")
-            updated_df = check_and_mark_item(df, cleaned_barcode)
-            st.session_state['inventory_df'] = updated_df
-            st.rerun()
+            if cleaned_barcode:
+                updated_df = check_and_mark_item(df, cleaned_barcode)
+                st.session_state['inventory_df'] = updated_df
+                st.rerun()
+            else:
+                st.error("無效的條碼")
         except Exception as e:
             st.error(f"處理掃描結果時發生錯誤: {str(e)}")
 
