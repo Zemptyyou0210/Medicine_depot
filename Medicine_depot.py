@@ -107,12 +107,12 @@ def check_and_mark_item(df, barcode):
         st.write(f"輸入的條碼類型: {type(barcode)}")
         
         # 首先嘗試完全匹配
-        item = df[df['條碼'].astype(str).str.zfill(13) == str(barcode).zfill(13)]
+        item = df[df['條碼'].astype(str).str.strip() == str(barcode).strip()]
         st.write(f"完全匹配結果: {len(item)} 項")
         
         if item.empty:
             # 如果完全匹配失敗，嘗試部分匹配
-            item = df[df['條碼'].astype(str).str.zfill(13).str.contains(f"^{str(barcode).zfill(13)}$|^{str(barcode).zfill(13)}|{str(barcode).zfill(13)}$")]
+            item = df[df['條碼'].astype(str).str.strip().str.contains(str(barcode).strip())]
             st.write(f"部分匹配結果: {len(item)} 項")
         
         if not item.empty:
@@ -239,10 +239,23 @@ def check_inventory():
 
     if scanned_barcode:
         st.write("開始處理掃描到的條碼")
+        st.write(f"處理前的數據框：")
+        st.write(df)
+        
         updated_df = check_and_mark_item(df, scanned_barcode)
+        
         st.write("更新後的數據框：")
         st.write(updated_df)
+        
+        if df.equals(updated_df):
+            st.warning("數據框沒有發生變化")
+        else:
+            st.success("數據框已更新")
+        
         st.session_state['inventory_df'] = updated_df
+        st.write("Session state 中的數據框：")
+        st.write(st.session_state['inventory_df'])
+        
         st.session_state['scanned_barcode'] = ''
         st.rerun()
 
