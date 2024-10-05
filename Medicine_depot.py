@@ -222,7 +222,10 @@ def check_inventory():
     </style>
     """
 
-    components.html(barcode_scanner_html, height=600, key="barcode_scanner")
+    try:
+        components.html(barcode_scanner_html, height=600, key="barcode_scanner")
+    except Exception as e:
+        st.error(f"加載條碼掃描器時發生錯誤: {str(e)}")
 
     # 使用 st.empty() 創建一個可以動態更新的元素
     result_placeholder = st.empty()
