@@ -242,13 +242,13 @@ def check_inventory():
         # 更新掃描結果顯示
         result_placeholder.text(f"掃描到的條碼: {scanned_barcode}")
         # 檢查並標記商品
-        updated_df = check_and_mark_item(st.session_state['inventory_df'].copy(), scanned_barcode)
+        updated_df = check_and_mark_item(df.copy(), scanned_barcode)
         # 更新 session state 中的數據
         st.session_state['inventory_df'] = updated_df
         # 清除掃描結果，為下一次掃描做準備
         st.session_state['scanned_barcode'] = ''
         # 強制重新運行應用以更新顯示
-        st.experimental_rerun()
+        st.rerun()
 
     # 保留手動輸入選項作為備用
     st.markdown("---")
@@ -260,7 +260,7 @@ def check_inventory():
     if submit_button and manual_barcode:
         df = check_and_mark_item(st.session_state['inventory_df'], manual_barcode)
         st.session_state['inventory_df'] = df
-        st.experimental_rerun()
+        st.rerun()
 
     # 顯示檢貨進度
     total_items = len(df)
