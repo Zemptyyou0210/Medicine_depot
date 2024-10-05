@@ -63,8 +63,13 @@ def read_from_drive():
         # 確保條碼列被正確讀取
         if '條碼' in df.columns:
             df['條碼'] = df['條碼'].astype(str).str.strip()
+            # 移除可能的非數字字符
+            df['條碼'] = df['條碼'].apply(lambda x: ''.join(filter(str.isdigit, x)))
         else:
             st.error("數據中缺少 '條碼' 列")
+        
+        st.write("數據框中的條碼示例:")
+        st.write(df['條碼'].head())
         
         # 讀取 Excel 文件後，檢查並添加 '檢貨狀態' 列
         if '檢貨狀態' not in df.columns:
@@ -107,14 +112,17 @@ def check_and_mark_item(df, barcode):
         
         # 嘗試完全匹配
         item = df[df['條碼'].astype(str).str.strip() == str(barcode).strip()]
+        st.write(f"完全匹配結果數: {len(item)}")
         
         if item.empty:
             # 如果完全匹配失敗，嘗試部分匹配
             item = df[df['條碼'].astype(str).str.strip().str.contains(str(barcode).strip(), na=False)]
+            st.write(f"部分匹配結果數: {len(item)}")
         
         if not item.empty:
             selected_item = item.iloc[0]
             st.success(f"找到商品：{selected_item['藥品名稱']}")
+            st.write(f"匹配的條碼: {selected_item['條碼']}")
             
             if '檢貨狀態' in df.columns:
                 old_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
@@ -126,6 +134,8 @@ def check_and_mark_item(df, barcode):
                 st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
         else:
             st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
+            st.write("數據框中的前幾個條碼:")
+            st.write(df['條碼'].head())
     except Exception as e:
         st.error(f"處理商品時發生錯誤: {str(e)}")
     
@@ -231,11 +241,17 @@ def check_inventory():
     scanned_barcode = st.empty()
     
     value = components.html(barcode_scanner_html, height=500)
-    if value:
-        scanned_barcode.text(f"掃描到的條碼: {value}")
-        updated_df = check_and_mark_item(df, value)
-        st.session_state['inventory_df'] = updated_df
-        st.rerun()
+    if value and isinstance(value, str):
+        try:
+            scanned_barcode.text(f"掃描到的條碼: {value}")
+            # 移除可能的非數字字符
+            cleaned_barcode = ''.join(filter(str.isdigit, value))
+            st.write(f"處理的條碼: {cleaned_barcode}")
+            updated_df = check_and_mark_item(df, cleaned_barcode)
+            st.session_state['inventory_df'] = updated_df
+            st.rerun()
+        except Exception as e:
+            st.error(f"處理掃描結果時發生錯誤: {str(e)}")
 
     # 手動輸入選項
     st.markdown("---")
