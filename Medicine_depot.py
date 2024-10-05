@@ -93,48 +93,51 @@ def format_ean13(barcode):
     return f"{barcode[:1]} {barcode[1:7]} {barcode[7:]}"  # 格式化顯示
 
 def check_and_mark_item(df, barcode):
-    if '條碼' not in df.columns:
-        st.error("數據框中缺少 '條碼' 列")
-        return df
-    
-    # 首先嘗試完全匹配
-    item = df[df['條碼'].astype(str).str.zfill(13) == str(barcode).zfill(13)]
-    
-    if item.empty:
-        # 如果完全匹配失敗，嘗試部分匹配，但要求更嚴格的匹配
-        item = df[df['條碼'].astype(str).str.zfill(13).str.contains(f"^{str(barcode).zfill(13)}$|^{str(barcode).zfill(13)}|{str(barcode).zfill(13)}$")]
-    
-    if not item.empty:
-        if len(item) > 1:
-            st.warning(f"找到多個匹配的商品，請選擇正確的商品：")
-            for index, row in item.iterrows():
-                formatted_barcode = format_ean13(row['條碼'])
-                if st.button(f"{row['藥品名稱']} - 條碼: {formatted_barcode}", key=f"select_{index}"):
-                    selected_item = row
-                    break
-            else:
-                st.info("請選擇一個商品")
-                return df
-        else:
-            selected_item = item.iloc[0]
-
-        st.success(f"選擇的商品：{selected_item['藥品名稱']}")
-        formatted_barcode = format_ean13(selected_item['條碼'])
-        st.write(f"條碼：{formatted_barcode}")
-        for col in ['藥庫位置', '盤撥量', '藥庫庫存']:
-            if col in selected_item.index:
-                st.write(f"{col}：{selected_item[col]}")
+    try:
+        if '檢貨狀態' not in df.columns:
+            df['檢貨狀態'] = '未檢貨'  # 如果不存在，添加該列並設置默認值
         
-        if '檢貨狀態' in selected_item.index:
-            if selected_item['檢貨狀態'] != '已檢貨':
+        if '條碼' not in df.columns:
+            st.error("數據框中缺少 '條碼' 列")
+            return df
+        
+        # 首先嘗試完全匹配
+        item = df[df['條碼'].astype(str).str.zfill(13) == str(barcode).zfill(13)]
+        
+        if item.empty:
+            # 如果完全匹配失敗，嘗試部分匹配，但要求更嚴格的匹配
+            item = df[df['條碼'].astype(str).str.zfill(13).str.contains(f"^{str(barcode).zfill(13)}$|^{str(barcode).zfill(13)}|{str(barcode).zfill(13)}$")]
+        
+        if not item.empty:
+            if len(item) > 1:
+                st.warning(f"找到多個匹配的商品，請選擇正確的商品：")
+                for index, row in item.iterrows():
+                    formatted_barcode = format_ean13(row['條碼'])
+                    if st.button(f"{row['藥品名稱']} - 條碼: {formatted_barcode}", key=f"select_{index}"):
+                        selected_item = row
+                        break
+                else:
+                    st.info("請選擇一個商品")
+                    return df
+            else:
+                selected_item = item.iloc[0]
+
+            st.success(f"選擇的商品：{selected_item['藥品名稱']}")
+            formatted_barcode = format_ean13(selected_item['條碼'])
+            st.write(f"條碼：{formatted_barcode}")
+            for col in ['藥庫位置', '盤撥量', '藥庫庫存']:
+                if col in selected_item.index:
+                    st.write(f"{col}：{selected_item[col]}")
+            
+            if '檢貨狀態' in df.columns:
                 df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'] = '已檢貨'
                 st.success("商品已自動標記為已檢貨")
             else:
-                st.info("此商品已經檢貨")
+                st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
         else:
-            st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
-    else:
-        st.error(f"未找到條碼為 {format_ean13(barcode)} 的商品，請檢查條碼是否正確")
+            st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
+    except Exception as e:
+        st.error(f"處理商品時發生錯誤: {str(e)}")
     
     return df
 
@@ -148,7 +151,7 @@ def check_inventory():
             st.rerun()
         return
 
-    df = st.session_state['inventory_df']
+    df = st.session_state['inventory_df'].copy()
     
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
@@ -239,9 +242,9 @@ def check_inventory():
         # 更新掃描結果顯示
         result_placeholder.text(f"掃描到的條碼: {scanned_barcode}")
         # 檢查並標記商品
-        df = check_and_mark_item(st.session_state['inventory_df'], scanned_barcode)
+        updated_df = check_and_mark_item(st.session_state['inventory_df'].copy(), scanned_barcode)
         # 更新 session state 中的數據
-        st.session_state['inventory_df'] = df
+        st.session_state['inventory_df'] = updated_df
         # 清除掃描結果，為下一次掃描做準備
         st.session_state['scanned_barcode'] = ''
         # 強制重新運行應用以更新顯示
