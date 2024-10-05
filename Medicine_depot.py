@@ -204,10 +204,11 @@ def check_inventory():
     <style>
     #scanner-container {
         width: 100%;
-        max-width: 640px;
-        height: 480px;
+        max-width: 300px;  /* 減小最大寬度 */
+        height: 400px;     /* 增加高度 */
         overflow: hidden;
         position: relative;
+        margin: 0 auto;    /* 居中顯示 */
     }
     #scanner-container video {
         width: 100%;
@@ -218,12 +219,13 @@ def check_inventory():
         margin-top: 10px;
         font-size: 18px;
         font-weight: bold;
+        text-align: center;  /* 居中顯示結果 */
     }
     </style>
     """
 
     try:
-        components.html(barcode_scanner_html, height=600, key="barcode_scanner")
+        components.html(barcode_scanner_html, height=450)  # 調整高度以適應新的掃描器尺寸
     except Exception as e:
         st.error(f"加載條碼掃描器時發生錯誤: {str(e)}")
 
