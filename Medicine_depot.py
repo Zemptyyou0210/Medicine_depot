@@ -183,11 +183,8 @@ def check_inventory():
             codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
                 if (result) {
                     document.getElementById('results').textContent = "掃描到條碼: " + result.text;
-                    // 使用 Streamlit 的 setComponentValue 方法傳遞掃描結果
-                    window.parent.postMessage({
-                        type: "streamlit:setComponentValue",
-                        value: result.text
-                    }, "*");
+                    // 使用 Streamlit 的組件 API 傳遞掃描結果
+                    window.Streamlit.setComponentValue(result.text);
                     // 暫停掃描以避免重複掃描
                     codeReader.reset();
                     setTimeout(startScanning, 2000);  // 2秒後重新開始掃描
@@ -226,11 +223,15 @@ def check_inventory():
     
     try:
         value = components.html(barcode_scanner_html, height=450)
+        st.write(f"組件返回值: {value}")  # 調試信息
         if value is not None:
             scanned_barcode.text(f"掃描到的條碼: {value}")
             st.session_state['scanned_barcode'] = value
+            st.write(f"已將掃描結果 {value} 存入 session state")  # 調試信息
     except Exception as e:
         st.error(f"加載條碼掃描器時發生錯誤: {str(e)}")
+
+    st.write(f"Session state 中的掃描結果: {st.session_state.get('scanned_barcode', '無')}")  # 調試信息
 
     if 'scanned_barcode' in st.session_state and st.session_state['scanned_barcode']:
         barcode = st.session_state['scanned_barcode']
