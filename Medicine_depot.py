@@ -148,9 +148,7 @@ def check_inventory():
         return
 
     df = st.session_state['inventory_df'].copy()
-    st.write("當前庫存狀態：")
-    st.write(df)
-
+    
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
     df_display = df[display_columns]
@@ -184,8 +182,8 @@ def check_inventory():
         function startScanning() {
             codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
                 if (result) {
-                    document.getElementById('results').innerHTML = "掃描到條碼: " + result.text;
-                    // 將掃描結果傳回 Streamlit
+                    document.getElementById('results').textContent = "掃描到條碼: " + result.text;
+                    // 使用 Streamlit 的 setComponentValue 方法傳遞掃描結果
                     window.parent.postMessage({
                         type: "streamlit:setComponentValue",
                         value: result.text
@@ -205,11 +203,10 @@ def check_inventory():
     <style>
     #scanner-container {
         width: 100%;
-        max-width: 300px;  /* 減小最大寬度 */
-        height: 400px;     /* 增加高度 */
+        max-width: 300px;
+        height: 400px;
         overflow: hidden;
-        position: relative;
-        margin: 0 auto;    /* 居中顯示 */
+        margin: 0 auto;
     }
     #scanner-container video {
         width: 100%;
@@ -220,43 +217,27 @@ def check_inventory():
         margin-top: 10px;
         font-size: 18px;
         font-weight: bold;
-        text-align: center;  /* 居中顯示結果 */
+        text-align: center;
     }
     </style>
     """
 
+    scanned_barcode = st.empty()
+    
     try:
-        components.html(barcode_scanner_html, height=450)  # 調整高度以適應新的掃描器尺寸
+        value = components.html(barcode_scanner_html, height=450)
+        if value is not None:
+            scanned_barcode.text(f"掃描到的條碼: {value}")
+            st.session_state['scanned_barcode'] = value
     except Exception as e:
         st.error(f"加載條碼掃描器時發生錯誤: {str(e)}")
 
-    # 使用 st.empty() 創建一個可以動態更新的元素
-    result_placeholder = st.empty()
-
-    # 獲取掃描結果
-    scanned_barcode = st.session_state.get('scanned_barcode', '')
-    st.write(f"掃描到的條碼: {scanned_barcode}")
-
-    if scanned_barcode:
-        st.write("開始處理掃描到的條碼")
-        st.write(f"處理前的數據框：")
-        st.write(df)
-        
-        updated_df = check_and_mark_item(df, scanned_barcode)
-        
-        st.write("更新後的數據框：")
-        st.write(updated_df)
-        
-        if df.equals(updated_df):
-            st.warning("數據框沒有發生變化")
-        else:
-            st.success("數據框已更新")
-        
+    if 'scanned_barcode' in st.session_state and st.session_state['scanned_barcode']:
+        barcode = st.session_state['scanned_barcode']
+        st.write(f"處理條碼: {barcode}")
+        updated_df = check_and_mark_item(df, barcode)
         st.session_state['inventory_df'] = updated_df
-        st.write("Session state 中的數據框：")
-        st.write(st.session_state['inventory_df'])
-        
-        st.session_state['scanned_barcode'] = ''
+        st.session_state['scanned_barcode'] = ''  # 清除掃描結果
         st.rerun()
 
     # 保留手動輸入選項作為備用
@@ -267,8 +248,8 @@ def check_inventory():
         submit_button = st.form_submit_button("檢查商品")
 
     if submit_button and manual_barcode:
-        df = check_and_mark_item(st.session_state['inventory_df'], manual_barcode)
-        st.session_state['inventory_df'] = df
+        updated_df = check_and_mark_item(df, manual_barcode)
+        st.session_state['inventory_df'] = updated_df
         st.rerun()
 
     # 顯示檢貨進度
