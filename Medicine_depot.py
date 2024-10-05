@@ -110,13 +110,17 @@ def check_and_mark_item(df, barcode):
         st.write(f"數據框中的條碼類型: {df['條碼'].dtype}")
         st.write(f"輸入的條碼類型: {type(barcode)}")
         
+        # 確保條碼是字符串類型
+        df['條碼'] = df['條碼'].astype(str)
+        barcode = str(barcode)
+        
         # 嘗試完全匹配
-        item = df[df['條碼'].astype(str).str.strip() == str(barcode).strip()]
+        item = df[df['條碼'].str.strip() == barcode.strip()]
         st.write(f"完全匹配結果數: {len(item)}")
         
         if item.empty:
             # 如果完全匹配失敗，嘗試部分匹配
-            item = df[df['條碼'].astype(str).str.strip().str.contains(str(barcode).strip(), na=False)]
+            item = df[df['條碼'].str.strip().str.contains(barcode.strip(), na=False)]
             st.write(f"部分匹配結果數: {len(item)}")
         
         if not item.empty:
@@ -124,14 +128,11 @@ def check_and_mark_item(df, barcode):
             st.success(f"找到商品：{selected_item['藥品名稱']}")
             st.write(f"匹配的條碼: {selected_item['條碼']}")
             
-            if '檢貨狀態' in df.columns:
-                old_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
-                df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'] = '已檢貨'
-                new_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
-                st.write(f"檢貨狀態從 '{old_status}' 更新為 '{new_status}'")
-                st.success("商品已自動標記為已檢貨")
-            else:
-                st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
+            old_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
+            df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'] = '已檢貨'
+            new_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
+            st.write(f"檢貨狀態從 '{old_status}' 更新為 '{new_status}'")
+            st.success("商品已自動標記為已檢貨")
         else:
             st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
             st.write("數據框中的前幾個條碼:")
@@ -176,14 +177,15 @@ def check_inventory():
         function startScanning() {
             codeReader.listVideoInputDevices()
                 .then((videoInputDevices) => {
-                    selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId  // 使用最後一個設備（通常是後置攝像頭）
+                    selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId
                     codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
                         if (result) {
                             const currentTime = new Date().getTime();
-                            if (currentTime - lastScanTime > 2000) {  // 2秒內只處理一次掃描結果
+                            if (currentTime - lastScanTime > 2000) {
                                 lastScanTime = currentTime;
                                 document.getElementById('results').textContent = "掃描到條碼: " + result.text;
                                 window.Streamlit.setComponentValue(result.text);
+                                window.Streamlit.setComponentReady();
                             }
                         }
                         if (err && !(err instanceof ZXing.NotFoundException)) {
@@ -223,11 +225,11 @@ def check_inventory():
     scanned_barcode = st.empty()
     
     value = components.html(barcode_scanner_html, height=500)
-    if value and isinstance(value, str):
+    if value:
         try:
             scanned_barcode.text(f"掃描到的條碼: {value}")
             # 移除可能的非數字字符
-            cleaned_barcode = ''.join(filter(str.isdigit, value))
+            cleaned_barcode = ''.join(filter(str.isdigit, str(value)))
             st.write(f"處理的條碼: {cleaned_barcode}")
             updated_df = check_and_mark_item(df, cleaned_barcode)
             st.session_state['inventory_df'] = updated_df
