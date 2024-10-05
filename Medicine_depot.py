@@ -160,42 +160,59 @@ def check_inventory():
     ))
 
     barcode_scanner_html = """
-    <div id="scanner-container"></div>
+    <div id="scanner-container">
+        <video id="video" playsinline autoplay></video>
+    </div>
     <div id="results"></div>
-    <script src="https://cdn.jsdelivr.net/npm/dynamsoft-javascript-barcode@9.0.2/dist/dbr.js"></script>
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
     <script>
-        let scanner = null;
-        (async () => {
-            try {
-                Dynamsoft.DBR.BarcodeReader.license = 'YOUR_DYNAMSOFT_LICENSE_KEY';
-                scanner = await Dynamsoft.DBR.BarcodeScanner.createInstance();
-                
-                // 針對移動設備的優化設置
-                await scanner.updateRuntimeSettings("speed");
-                await scanner.setResolution(1280, 720);
-                
-                await scanner.setUIElement(document.getElementById('scanner-container'));
-                scanner.onUnduplicatedRead = (txt, result) => {
-                    document.getElementById('results').innerHTML = "掃描到條碼: " + txt;
+        const codeReader = new ZXing.BrowserMultiFormatReader()
+        let selectedDeviceId;
+
+        function initScanner() {
+            codeReader.listVideoInputDevices()
+                .then((videoInputDevices) => {
+                    selectedDeviceId = videoInputDevices[0].deviceId
+                    startScanning();
+                })
+                .catch((err) => {
+                    console.error(err)
+                })
+        }
+
+        function startScanning() {
+            codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
+                if (result) {
+                    document.getElementById('results').innerHTML = "掃描到條碼: " + result.text;
                     // 將掃描結果傳回 Streamlit
                     window.parent.postMessage({
                         type: "streamlit:setComponentValue",
-                        value: txt
+                        value: result.text
                     }, "*");
-                };
-                await scanner.show();
-            } catch (ex) {
-                alert(ex.message);
-                throw ex;
-            }
-        })();
+                    // 暫停掃描以避免重複掃描
+                    codeReader.reset();
+                    setTimeout(startScanning, 2000);  // 2秒後重新開始掃描
+                }
+                if (err && !(err instanceof ZXing.NotFoundException)) {
+                    console.error(err)
+                }
+            })
+        }
+
+        document.addEventListener('DOMContentLoaded', initScanner);
     </script>
     <style>
     #scanner-container {
         width: 100%;
-        height: 300px;
-        background: #f0f0f0;
+        max-width: 640px;
+        height: 480px;
+        overflow: hidden;
         position: relative;
+    }
+    #scanner-container video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
     }
     #results {
         margin-top: 10px;
@@ -205,7 +222,7 @@ def check_inventory():
     </style>
     """
 
-    components.html(barcode_scanner_html, height=400)
+    components.html(barcode_scanner_html, height=600)
 
     scanned_barcode = st.text_input("掃描到的條碼", key="scanned_barcode")
 
