@@ -159,153 +159,71 @@ def check_inventory():
         subset=['檢貨狀態']
     ))
 
-    # 添加條碼掃描功能
     barcode_scanner_html = """
     <div id="scanner-container"></div>
-    <button id="start-scanner">開始/停止掃描</button>
-    <div id="scanner-status"></div>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+    <div id="results"></div>
+    <script src="https://cdn.jsdelivr.net/npm/dynamsoft-javascript-barcode@9.0.2/dist/dbr.js"></script>
     <script>
-        var scannerIsRunning = false;
-
-        function startScanner() {
-            Quagga.init({
-                inputStream: {
-                    name: "Live",
-                    type: "LiveStream",
-                    target: document.querySelector('#scanner-container'),
-                    constraints: {
-                        width: {min: 640},
-                        height: {min: 480},
-                        aspectRatio: {min: 1, max: 2},
-                        facingMode: "environment"
-                    },
-                },
-                locator: {
-                    patchSize: "medium",
-                    halfSample: true
-                },
-                numOfWorkers: 2,
-                decoder: {
-                    readers: [
-                        {
-                            format: "ean_reader",
-                            config: {
-                                supplements: [
-                                    'ean_5_reader', 'ean_2_reader'
-                                ]
-                            }
-                        },
-                        {
-                            format: "ean_8_reader",
-                            config: {
-                                supplements: [
-                                    'ean_5_reader', 'ean_2_reader'
-                                ]
-                            }
-                        },
-                        "code_128_reader",
-                        "code_39_reader",
-                        "code_39_vin_reader",
-                        "codabar_reader",
-                        "upc_reader",
-                        "upc_e_reader",
-                        "i2of5_reader"
-                    ]
-                },
-                locate: true,
-                frequency: 10
-            }, function(err) {
-                if (err) {
-                    console.log(err);
-                    document.querySelector('#scanner-status').textContent = "無法啟動掃描器：" + err;
-                    return;
-                }
-                Quagga.start();
-                scannerIsRunning = true;
-                document.querySelector('#scanner-status').textContent = "掃描器已啟動";
-            });
-
-            Quagga.onDetected(function(result) {
-                var code = result.codeResult.code;
-                document.querySelector('#scanner-status').textContent = "已掃描到條碼：" + code;
+        let scanner = null;
+        (async () => {
+            try {
+                Dynamsoft.DBR.BarcodeReader.license = 'YOUR_DYNAMSOFT_LICENSE_KEY';
+                scanner = await Dynamsoft.DBR.BarcodeScanner.createInstance();
                 
-                // 檢查條碼長度是否正確
-                if (code.length === 13 || code.length === 8) {
-                    // 更新 Streamlit 的輸入欄位並觸發檢查
-                    var streamlitInput = parent.document.querySelector('.stTextInput input');
-                    if (streamlitInput) {
-                        streamlitInput.value = code;
-                        streamlitInput.dispatchEvent(new Event('input', { bubbles: true }));
-                        
-                        // 觸發表單提交
-                        var submitButton = parent.document.querySelector('button[kind="primaryFormSubmit"]');
-                        if (submitButton) {
-                            submitButton.click();
-                        }
-                    }
-                } else {
-                    document.querySelector('#scanner-status').textContent = "掃描到無效條碼，請重試";
-                }
-            });
-        }
-
-        document.querySelector('#start-scanner').addEventListener('click', function() {
-            if (scannerIsRunning) {
-                Quagga.stop();
-                scannerIsRunning = false;
-                this.textContent = "開始掃描";
-                document.querySelector('#scanner-status').textContent = "掃描器已停止";
-            } else {
-                startScanner();
-                this.textContent = "停止掃描";
+                // 針對移動設備的優化設置
+                await scanner.updateRuntimeSettings("speed");
+                await scanner.setResolution(1280, 720);
+                
+                await scanner.setUIElement(document.getElementById('scanner-container'));
+                scanner.onUnduplicatedRead = (txt, result) => {
+                    document.getElementById('results').innerHTML = "掃描到條碼: " + txt;
+                    // 將掃描結果傳回 Streamlit
+                    window.parent.postMessage({
+                        type: "streamlit:setComponentValue",
+                        value: txt
+                    }, "*");
+                };
+                await scanner.show();
+            } catch (ex) {
+                alert(ex.message);
+                throw ex;
             }
-        });
+        })();
     </script>
-    """
-    
-    st.markdown("""
     <style>
     #scanner-container {
+        width: 100%;
+        height: 300px;
+        background: #f0f0f0;
         position: relative;
-        width: 100%;
-        max-width: 320px;
-        height: 240px;
-        overflow: hidden;
-        margin: auto;
     }
-    #scanner-container video {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    #start-scanner {
-        display: block;
-        margin: 10px auto;
-        padding: 10px 20px;
-        font-size: 16px;
-    }
-    #scanner-status {
-        text-align: center;
+    #results {
         margin-top: 10px;
+        font-size: 18px;
         font-weight: bold;
     }
     </style>
-    """, unsafe_allow_html=True)
-    
+    """
+
     components.html(barcode_scanner_html, height=400)
 
-    # 使用 form 來處理條碼輸入
+    scanned_barcode = st.text_input("掃描到的條碼", key="scanned_barcode")
+
+    if scanned_barcode:
+        df = check_and_mark_item(df, scanned_barcode)
+
+    # 保留手動輸入選項
     with st.form(key='barcode_form'):
-        barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
+        manual_barcode = st.text_input("手動輸入商品條碼", key="barcode_input")
         submit_button = st.form_submit_button("檢查商品")
 
-    if submit_button or barcode:
-        df = check_and_mark_item(df, barcode)
-        if st.button("確認更新"):
-            st.session_state['inventory_df'] = df  # 更新 session state 中的數據
-            st.success("數據已更新")
-            st.rerun()  # 強制重新運行應用以刷新顯示
+    if submit_button and manual_barcode:
+        df = check_and_mark_item(df, manual_barcode)
+
+    if st.button("確認更新"):
+        st.session_state['inventory_df'] = df  # 更新 session state 中的數據
+        st.success("數據已更新")
+        st.rerun()  # 強制重新運行應用以刷新顯示
 
     # 顯示檢貨進度
     total_items = len(df)
