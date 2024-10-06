@@ -144,7 +144,11 @@ def check_inventory():
         <script>
         window.addEventListener('message', function(event) {
             if (event.data.type === 'scanned_barcode') {
-                window.Streamlit.setComponentValue(event.data.value);
+                if (window.Streamlit) {
+                    window.Streamlit.setComponentValue(event.data.value);
+                } else {
+                    console.log('Streamlit object not available, unable to set component value');
+                }
             }
         }, false);
         </script>
@@ -155,12 +159,22 @@ def check_inventory():
     # 使用 st.components.v1.html 來嵌入條碼掃描器
     scanned_value = st.components.v1.html(barcode_scanner_html, height=600)
 
-    if scanned_value:
-        st.write(f"掃描到的條碼: {scanned_value}")
-        updated_df = check_and_mark_item(df, scanned_value)
+    # 添加輪詢機制
+    if 'last_scanned_value' not in st.session_state:
+        st.session_state.last_scanned_value = None
+
+    current_value = scanned_value
+    if current_value and current_value != st.session_state.last_scanned_value:
+        st.session_state.last_scanned_value = current_value
+        st.write(f"掃描到的條碼: {current_value}")
+        updated_df = check_and_mark_item(df, current_value)
         if updated_df is not None:
             st.session_state['inventory_df'] = updated_df
             st.rerun()
+
+    # 添加一個按鈕來手動觸發重新檢查
+    if st.button("重新檢查掃描結果"):
+        st.rerun()
 
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
