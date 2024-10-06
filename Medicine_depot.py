@@ -167,40 +167,15 @@ def check_inventory():
     if 'last_scanned_barcode' not in st.session_state:
         st.session_state.last_scanned_barcode = None
 
-    scanned_value = components.html(
-        """
-        <div id="scanned-result"></div>
-        <script>
-        let lastProcessedTime = 0;
-        window.addEventListener('message', function(event) {
-            if (event.data.type === 'scan_result') {
-                const currentTime = new Date().getTime();
-                if (currentTime - lastProcessedTime > 2000) {
-                    lastProcessedTime = currentTime;
-                    document.getElementById('scanned-result').textContent = event.data.barcode;
-                    window.parent.postMessage({type: 'streamlit:setComponentValue', value: event.data.barcode}, '*');
-                }
-            }
-        }, false);
-        </script>
-        """,
-        height=0,
-    )
+    scanned_value = st.text_input("手動輸入條碼", key="manual_barcode_input")
 
     if scanned_value:
         try:
-            if isinstance(scanned_value, dict) and 'value' in scanned_value:
-                barcode = scanned_value['value']
-            elif isinstance(scanned_value, str):
-                barcode = scanned_value
-            else:
-                raise ValueError(f"Unexpected scanned_value type: {type(scanned_value)}")
-
-            if barcode != st.session_state.last_scanned_barcode:
-                st.session_state.last_scanned_barcode = barcode
-                result_placeholder.text(f"掃描到的條碼: {barcode}")
+            if scanned_value != st.session_state.last_scanned_barcode:
+                st.session_state.last_scanned_barcode = scanned_value
+                result_placeholder.text(f"掃描到的條碼: {scanned_value}")
                 # 移除可能的非數字字符
-                cleaned_barcode = ''.join(filter(str.isdigit, barcode))
+                cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
                 st.write(f"處理的條碼: {cleaned_barcode}")
                 updated_df = check_and_mark_item(df, cleaned_barcode)
                 if updated_df is not None:
@@ -211,7 +186,7 @@ def check_inventory():
             st.write(f"接收到的掃描值類型: {type(scanned_value)}")
             st.write(f"接收到的掃描值內容: {scanned_value}")
 
-    # ... 保留手動輸入選項和檢貨進度顯示的代碼 ...
+    # ... 後面的代碼保持不變 ...
 
 def receive_inventory():
     st.subheader("收貨")
@@ -315,7 +290,10 @@ barcode_scanner_html = """
                         if (currentTime - lastScanTime > 2000) {
                             lastScanTime = currentTime;
                             document.getElementById('results').textContent = "掃描到條碼: " + result.text;
-                            window.parent.postMessage({type: 'streamlit:setComponentValue', value: result.text}, '*');
+                            // 更新文本輸入框
+                            document.querySelector('input[data-testid="stTextInput"]').value = result.text;
+                            // 觸發 change 事件
+                            document.querySelector('input[data-testid="stTextInput"]').dispatchEvent(new Event('change', { bubbles: true }));
                         }
                     }
                     if (err && !(err instanceof ZXing.NotFoundException)) {
