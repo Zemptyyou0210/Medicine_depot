@@ -144,11 +144,6 @@ def check_inventory():
 
     df = st.session_state['inventory_df'].copy()
 
-    # 添加手動更新按鈕
-    if st.button("手動更新庫存狀態"):
-        st.session_state['inventory_df'] = df
-        st.success("庫存狀態已手動更新")
-
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
     df_display = df[display_columns]
@@ -160,37 +155,26 @@ def check_inventory():
         subset=['檢貨狀態']
     ))
 
-    # 使用自定義組件來掃描條碼
-    scanned_value = components.html(barcode_scanner_html, height=600)
+    # 使用 st.components.v1.html 來嵌入條碼掃描器
+    scanned_value = st.components.v1.html(barcode_scanner_html, height=600)
+
+    # 處理掃描結果
+    if scanned_value:
+        st.write(f"掃描到的條碼: {scanned_value}")
+        updated_df = check_and_mark_item(df, scanned_value)
+        if updated_df is not None:
+            st.session_state['inventory_df'] = updated_df
+            st.experimental_rerun()
 
     # 手動輸入條碼
-    manual_input = st.text_input("手動輸入條碼")
+    manual_input = st.text_input("手動輸入條碼", value="")
 
-    # 處理掃描或手動輸入的條碼
-    if scanned_value and isinstance(scanned_value, str):
-        cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
-    elif manual_input:
-        cleaned_barcode = ''.join(filter(str.isdigit, manual_input))
-    else:
-        cleaned_barcode = None
-
-    if cleaned_barcode:
-        st.write(f"處理的條碼: {cleaned_barcode}")  # 調試信息
-        df = update_inventory_status(df, cleaned_barcode)
-        if df is not None:
-            st.session_state['inventory_df'] = df
-            st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
-            
-            # 立即更新顯示
-            df_display = df[display_columns]
-            status_display.empty()
-            status_display.write("當前庫存狀態：")
-            status_display.dataframe(df_display.style.applymap(
-                lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
-                subset=['檢貨狀態']
-            ))
-        else:
-            st.error(f"更新條碼 {cleaned_barcode} 失敗")
+    if st.button("更新庫存"):
+        if manual_input:
+            updated_df = check_and_mark_item(df, manual_input)
+            if updated_df is not None:
+                st.session_state['inventory_df'] = updated_df
+                st.experimental_rerun()
 
 def receive_inventory():
     st.subheader("收貨")
@@ -300,7 +284,10 @@ barcode_scanner_html = """
     function updateStreamlitInput(value) {
         updateDebug('嘗試更新輸入框，值為: ' + value);
         if (window.parent) {
-            window.parent.postMessage({type: 'streamlit:setComponentValue', value: value}, '*');
+            window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                value: value
+            }, '*');
         }
     }
 
