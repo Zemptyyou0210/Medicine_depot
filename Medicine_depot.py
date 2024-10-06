@@ -324,12 +324,28 @@ function updateDebug(message) {
     debugElement.textContent += message + '\\n';
 }
 
+function isValidEAN13(code) {
+    if(code.length !== 13 || !/^\d+$/.test(code)) return false;
+    
+    let sum = 0;
+    for(let i = 0; i < 12; i++) {
+        sum += parseInt(code[i]) * (i % 2 === 0 ? 1 : 3);
+    }
+    let checkDigit = (10 - (sum % 10)) % 10;
+    return checkDigit === parseInt(code[12]);
+}
+
 function onScanSuccess(decodedText, decodedResult) {
-    updateDebug('掃描成功: ' + decodedText);
-    window.parent.postMessage({
-        type: 'streamlit:setComponentValue',
-        value: decodedText
-    }, '*');
+    updateDebug('掃描到的值: ' + decodedText);
+    if(isValidEAN13(decodedText)) {
+        updateDebug('有效的 EAN-13 條碼');
+        window.parent.postMessage({
+            type: 'streamlit:setComponentValue',
+            value: decodedText
+        }, '*');
+    } else {
+        updateDebug('無效的 EAN-13 條碼');
+    }
 }
 
 function onScanFailure(error) {
@@ -383,20 +399,26 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def clean_barcode(barcode):
-    return ''.join(filter(str.isdigit, barcode))
+    # 只保留數字
+    cleaned = ''.join(filter(str.isdigit, barcode))
+    # 確保長度為 13
+    if len(cleaned) == 13:
+        return cleaned
+    else:
+        return None
 
 def update_inventory_status(df, barcode):
     cleaned_barcode = clean_barcode(barcode)
-    st.write(f"在 update_inventory_status 中處理的條碼: {cleaned_barcode}")
-    st.write(f"數據框中的條碼類型: {df['條碼'].dtype}")
-    st.write(f"條碼是否存在: {cleaned_barcode in df['條碼'].astype(str).values}")
-    if cleaned_barcode in df['條碼'].astype(str).values:
-        df.loc[df['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'] = '已檢貨'
-        st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
-        return df
+    if cleaned_barcode:
+        if cleaned_barcode in df['條碼'].astype(str).values:
+            df.loc[df['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'] = '已檢貨'
+            st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
+            return df
+        else:
+            st.warning(f"條碼 {cleaned_barcode} 未找到")
     else:
-        st.warning(f"條碼 {cleaned_barcode} 未找到")
-        return df
+        st.error("無效的 EAN-13 條碼")
+    return df
 
 # 處理從 JavaScript 發送的消息
 if 'scanned_value' not in st.session_state:
