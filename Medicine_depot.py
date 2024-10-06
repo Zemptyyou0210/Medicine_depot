@@ -1,14 +1,13 @@
 import streamlit as st
-
-# 設置頁面配置
-st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
-
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import pandas as pd
 import io
 import streamlit.components.v1 as components
+
+# 設置頁面
+st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
 
 # 創建 Google Drive API 客戶端
 @st.cache_resource
@@ -136,14 +135,6 @@ def check_and_mark_item(df, barcode):
     
     return None
 
-def custom_component():
-    component_value = components.declare_component(
-        "custom_component",
-        path="path/to/your/component"  # 替換為實際路徑
-    )
-    return component_value
-
-# 在 check_inventory 函數中使用
 def check_inventory():
     st.subheader("檢貨")
     
@@ -152,7 +143,11 @@ def check_inventory():
         return
 
     df = st.session_state['inventory_df'].copy()
-    st.write(f"數據框中的條碼示例: {df['條碼'].head().tolist()}")  # 調試信息
+
+    # 添加手動更新按鈕
+    if st.button("手動更新庫存狀態"):
+        st.session_state['inventory_df'] = df
+        st.success("庫存狀態已手動更新")
 
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
@@ -165,55 +160,37 @@ def check_inventory():
         subset=['檢貨狀態']
     ))
 
-    # 使用 st.components.v1.html 來嵌入條碼掃描器
-    scanned_value = st.components.v1.html(barcode_scanner_html, height=600)
-
-    # 初始化 session_state
-    if 'scanned_value' not in st.session_state:
-        st.session_state.scanned_value = ""
-
-    # 顯示掃描到的值
-    if st.session_state.scanned_value:
-        st.write(f"掃描到的值: {st.session_state.scanned_value}")
-        # 處理掃描到的條碼
-        process_barcode(st.session_state.scanned_value)
-        # 清除掃描的值，為下一次掃描做準備
-        st.session_state.scanned_value = ""
+    # 使用自定義組件來掃描條碼
+    scanned_value = components.html(barcode_scanner_html, height=600)
 
     # 手動輸入條碼
-    manual_input = st.text_input("手動輸入條碼", value="")
+    manual_input = st.text_input("手動輸入條碼")
 
-    if st.button("更新庫存"):
-        if manual_input:
-            process_barcode(manual_input)
-
-    # 顯示調試信息
-    st.write("調試信息:")
-    st.components.v1.html(
-        """
-        <div id="debug-display"></div>
-        <script>
-        setInterval(() => {
-            const debugElement = document.getElementById('debug');
-            const debugDisplayElement = document.getElementById('debug-display');
-            if (debugElement && debugDisplayElement) {
-                debugDisplayElement.textContent = debugElement.textContent;
-            }
-        }, 1000);
-        </script>
-        """,
-        height=200
-    )
-
-def process_barcode(barcode):
-    cleaned_barcode = clean_barcode(barcode)
-    if cleaned_barcode:
-        st.write(f"處理的條碼: {cleaned_barcode}")
-        df = update_inventory_status(st.session_state['inventory_df'], cleaned_barcode)
-        st.session_state['inventory_df'] = df
-        st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
+    # 處理掃描或手動輸入的條碼
+    if scanned_value and isinstance(scanned_value, str):
+        cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
+    elif manual_input:
+        cleaned_barcode = ''.join(filter(str.isdigit, manual_input))
     else:
-        st.error("無效的 EAN-13 條碼")
+        cleaned_barcode = None
+
+    if cleaned_barcode:
+        st.write(f"處理的條碼: {cleaned_barcode}")  # 調試信息
+        df = update_inventory_status(df, cleaned_barcode)
+        if df is not None:
+            st.session_state['inventory_df'] = df
+            st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
+            
+            # 立即更新顯示
+            df_display = df[display_columns]
+            status_display.empty()
+            status_display.write("當前庫存狀態：")
+            status_display.dataframe(df_display.style.applymap(
+                lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
+                subset=['檢貨狀態']
+            ))
+        else:
+            st.error(f"更新條碼 {cleaned_barcode} 失敗")
 
 def receive_inventory():
     st.subheader("收貨")
@@ -287,51 +264,115 @@ def backup_to_drive():
 def main():
     st.title("藥品庫存管理系統")
 
-    # 處理從 JavaScript 發送的消息
-    message = st.query_params.get("message")
-    if message == "streamlit:setComponentValue":
-        scanned_value = st.query_params.get("value", "")
-        if scanned_value:
-            st.session_state.scanned_value = scanned_value
-            st.rerun()
+    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"), key="function_selection")
 
-    # 側邊欄
-    st.sidebar.title("功能選單")
-    menu = ["首頁", "讀取庫存", "檢貨"]
-    choice = st.sidebar.selectbox("選擇功能", menu)
-
-    if choice == "首頁":
-        st.subheader("歡迎使用藥品庫存管理系統")
-    elif choice == "讀取庫存":
+    if function == "從 Google Drive 讀取":
         read_from_drive()
-    elif choice == "檢貨":
+    elif function == "檢貨":
         check_inventory()
+    elif function == "收貨":
+        receive_inventory()
+    elif function == "備份到 Google Drive":
+        backup_to_drive()
 
     if st.button("測試 Google Drive 訪問"):
         test_drive_access()
 
 barcode_scanner_html = """
-<div id="scanner-container"></div>
+<div id="scanner-container">
+    <video id="video" playsinline autoplay></video>
+</div>
+<div id="results"></div>
 <div id="debug"></div>
-<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<button id="startButton">開始掃描</button>
+<script src="https://unpkg.com/@zxing/library@latest"></script>
 <script>
-// ... 保留之前的函數定義 ...
+    const codeReader = new ZXing.BrowserMultiFormatReader()
+    let selectedDeviceId;
+    let lastScanTime = 0;
 
-let html5QrcodeScanner = new Html5Qrcode("scanner-container");
-const config = { 
-    fps: 10, 
-    qrbox: { width: 250, height: 150 },
-    aspectRatio: 1.0,
-    supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
-};
+    function updateDebug(message) {
+        const debugElement = document.getElementById('debug');
+        debugElement.textContent += message + '\\n';
+        debugElement.scrollTop = debugElement.scrollHeight;
+    }
 
-html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
-    .catch(err => {
-        updateDebug('啟動掃描器失敗: ' + err);
-    });
+    function updateStreamlitInput(value) {
+        updateDebug('嘗試更新輸入框，值為: ' + value);
+        if (window.parent) {
+            window.parent.postMessage({type: 'streamlit:setComponentValue', value: value}, '*');
+        }
+    }
 
-// ... 保留之前的事件監聽器 ...
+    function startScanning() {
+        updateDebug('開始掃描');
+        codeReader.listVideoInputDevices()
+            .then((videoInputDevices) => {
+                updateDebug('找到 ' + videoInputDevices.length + ' 個視頻輸入設備');
+                if (videoInputDevices.length === 0) {
+                    updateDebug('沒有找到視頻輸入設備');
+                    return;
+                }
+                selectedDeviceId = videoInputDevices.find(device => /(back|rear)/i.test(device.label))?.deviceId 
+                    || videoInputDevices[videoInputDevices.length - 1].deviceId;
+                updateDebug('選擇設備 ID: ' + selectedDeviceId);
+                
+                const constraints = {
+                    video: {
+                        deviceId: selectedDeviceId,
+                        facingMode: "environment"
+                    }
+                };
+                
+                codeReader.decodeFromConstraints(constraints, 'video', (result, err) => {
+                    if (result) {
+                        const currentTime = new Date().getTime();
+                        if (currentTime - lastScanTime > 2000) {
+                            lastScanTime = currentTime;
+                            updateDebug('掃描到條碼: ' + result.text);
+                            document.getElementById('results').textContent = "掃描到條碼: " + result.text;
+                            updateStreamlitInput(result.text);
+                        }
+                    }
+                    if (err && !(err instanceof ZXing.NotFoundException)) {
+                        updateDebug('掃描錯誤: ' + err);
+                    }
+                })
+            })
+            .catch((err) => {
+                updateDebug('訪問相機時發生錯誤: ' + err);
+            })
+    }
+
+    document.getElementById('startButton').onclick = startScanning;
 </script>
+<style>
+    #scanner-container {
+        width: 100%;
+        max-width: 300px;
+        height: 400px;
+        overflow: hidden;
+        margin: 0 auto;
+    }
+    #scanner-container video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    #results, #debug {
+        margin-top: 10px;
+        font-size: 14px;
+        text-align: left;
+        max-height: 100px;
+        overflow-y: auto;
+    }
+    #startButton {
+        display: block;
+        margin: 10px auto;
+        padding: 10px 20px;
+        font-size: 16px;
+    }
+</style>
 """
 
 st.markdown("""
@@ -339,8 +380,8 @@ st.markdown("""
 #scanner-container {
     position: relative;
     width: 100%;
-    max-width: 100vw;
-    height: 70vh;
+    max-width: 640px;
+    height: 480px;
     overflow: hidden;
     margin: auto;
 }
@@ -349,46 +390,30 @@ st.markdown("""
     height: 100%;
     object-fit: cover;
 }
-#debug {
+#start-scanner {
+    display: block;
+    margin: 10px auto;
+    padding: 10px 20px;
+    font-size: 16px;
+    -webkit-appearance: none;
+    border-radius: 0;
+}
+#scanner-status {
+    text-align: center;
     margin-top: 10px;
-    padding: 10px;
-    background-color: #f0f0f0;
-    border: 1px solid #ddd;
-    font-size: 14px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+    font-weight: bold;
 }
 </style>
 """, unsafe_allow_html=True)
 
-def clean_barcode(barcode):
-    cleaned = ''.join(filter(str.isdigit, barcode))
-    if len(cleaned) == 13:
-        return cleaned
-    else:
-        st.warning(f"輸入的條碼 '{barcode}' 不是有效的 EAN-13 格式。")
-        return None
-
 def update_inventory_status(df, barcode):
-    cleaned_barcode = clean_barcode(barcode)
-    if cleaned_barcode:
-        if cleaned_barcode in df['條碼'].astype(str).values:
-            df.loc[df['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'] = '已檢貨'
-            st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
-            return df
-        else:
-            st.warning(f"條碼 {cleaned_barcode} 未找到")
+    if barcode in df['條碼'].values:
+        df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
+        st.write(f"更新條碼 {barcode} 的狀態為已檢貨")  # 調試信息
+        return df
     else:
-        st.error("無效的 EAN-13 條碼")
-    return df
-
-# 處理從 JavaScript 發送的消息
-if 'scanned_value' not in st.session_state:
-    st.session_state.scanned_value = ""
-
-message = st.experimental_get_query_params().get("message")
-if message and message[0] == "streamlit:setComponentValue":
-    st.session_state.scanned_value = st.experimental_get_query_params().get("value", [""])[0]
+        st.warning(f"條碼 {barcode} 未找到")
+        return None
 
 if __name__ == "__main__":
     main()
