@@ -158,10 +158,8 @@ def check_inventory():
 
     scanned_barcode = st.empty()
     
-    components.html(barcode_scanner_html, height=600)
-    
-    # 使用 st.empty() 創建一個可更新的文本輸入框
-    scanned_value = scanned_barcode.text_input("手動輸入條碼", key="manual_barcode_input")
+    # 使用自定義組件
+    scanned_value = components.html(barcode_scanner_html, height=600)
 
     st.write(f"當前 scanned_value: {scanned_value}")
 
@@ -300,17 +298,13 @@ barcode_scanner_html = """
 
     function updateStreamlitInput(value) {
         updateDebug('嘗試更新輸入框，值為: ' + value);
-        const input = document.querySelector('input[data-testid="stTextInput"]');
-        if (input) {
-            input.value = value;
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            updateDebug('已更新輸入框');
-        } else {
-            updateDebug('未找到輸入框');
-        }
         // 使用 Streamlit 的組件通信機制
-        window.parent.postMessage({type: 'streamlit:setComponentValue', value: value}, '*');
-        updateDebug('已發送 postMessage');
+        if (window.Streamlit) {
+            window.Streamlit.setComponentValue(value);
+            updateDebug('已使用 Streamlit.setComponentValue 發送值');
+        } else {
+            updateDebug('Streamlit 對象不可用');
+        }
     }
 
     function startScanning() {
