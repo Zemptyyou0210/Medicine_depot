@@ -158,10 +158,12 @@ def check_inventory():
 
     scanned_barcode = st.empty()
     
-    components.html(barcode_scanner_html, height=500)
+    components.html(barcode_scanner_html, height=600)
     
     # 使用 st.empty() 創建一個可更新的文本輸入框
     scanned_value = scanned_barcode.text_input("手動輸入條碼", key="manual_barcode_input")
+
+    st.write(f"當前 scanned_value: {scanned_value}")
 
     if scanned_value:
         try:
@@ -283,6 +285,7 @@ barcode_scanner_html = """
 </div>
 <div id="results"></div>
 <div id="debug"></div>
+<button id="startButton">開始掃描</button>
 <script src="https://unpkg.com/@zxing/library@latest"></script>
 <script>
     const codeReader = new ZXing.BrowserMultiFormatReader()
@@ -290,10 +293,13 @@ barcode_scanner_html = """
     let lastScanTime = 0;
 
     function updateDebug(message) {
-        document.getElementById('debug').textContent += message + '\\n';
+        const debugElement = document.getElementById('debug');
+        debugElement.textContent += message + '\\n';
+        debugElement.scrollTop = debugElement.scrollHeight;
     }
 
     function updateStreamlitInput(value) {
+        updateDebug('嘗試更新輸入框，值為: ' + value);
         const input = document.querySelector('input[data-testid="stTextInput"]');
         if (input) {
             input.value = value;
@@ -304,6 +310,7 @@ barcode_scanner_html = """
         }
         // 使用 Streamlit 的組件通信機制
         window.parent.postMessage({type: 'streamlit:setComponentValue', value: value}, '*');
+        updateDebug('已發送 postMessage');
     }
 
     function startScanning() {
@@ -315,9 +322,18 @@ barcode_scanner_html = """
                     updateDebug('沒有找到視頻輸入設備');
                     return;
                 }
-                selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId
+                selectedDeviceId = videoInputDevices.find(device => /(back|rear)/i.test(device.label))?.deviceId 
+                    || videoInputDevices[videoInputDevices.length - 1].deviceId;
                 updateDebug('選擇設備 ID: ' + selectedDeviceId);
-                codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
+                
+                const constraints = {
+                    video: {
+                        deviceId: selectedDeviceId,
+                        facingMode: "environment"
+                    }
+                };
+                
+                codeReader.decodeFromConstraints(constraints, 'video', (result, err) => {
                     if (result) {
                         const currentTime = new Date().getTime();
                         if (currentTime - lastScanTime > 2000) {
@@ -337,7 +353,7 @@ barcode_scanner_html = """
             })
     }
 
-    document.addEventListener('DOMContentLoaded', startScanning);
+    document.getElementById('startButton').onclick = startScanning;
 </script>
 <style>
     #scanner-container {
@@ -356,6 +372,14 @@ barcode_scanner_html = """
         margin-top: 10px;
         font-size: 14px;
         text-align: left;
+        max-height: 100px;
+        overflow-y: auto;
+    }
+    #startButton {
+        display: block;
+        margin: 10px auto;
+        padding: 10px 20px;
+        font-size: 16px;
     }
 </style>
 """
