@@ -166,28 +166,31 @@ def check_inventory():
     # 使用 HTML 組件來實現掃描功能
     scanned_value = components.html(barcode_scanner_html, height=600)
 
-    # 手動輸入條碼
-    manual_input = st.text_input("手動輸入條碼", value=scanned_value if scanned_value else "")
+    # 檢查掃描值是否為有效的字符串
+    if isinstance(scanned_value, str) and scanned_value.strip():
+        st.session_state['last_scanned'] = scanned_value.strip()
+    
+    # 手動輸入條碼，使用之前掃描的值（如果有）
+    manual_input = st.text_input("手動輸入條碼", value=st.session_state.get('last_scanned', ''))
 
-    if st.button("更新庫存") or scanned_value:
-        cleaned_barcode = ''.join(filter(str.isdigit, manual_input or scanned_value or ''))
+    if st.button("更新庫存") or (isinstance(scanned_value, str) and scanned_value.strip()):
+        cleaned_barcode = clean_barcode(manual_input or st.session_state.get('last_scanned', ''))
         if cleaned_barcode:
             st.write(f"處理的條碼: {cleaned_barcode}")  # 調試信息
             df = update_inventory_status(df, cleaned_barcode)
-            if df is not None:
-                st.session_state['inventory_df'] = df
-                st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
-                
-                # 立即更新顯示
-                df_display = df[display_columns]
-                status_display.empty()
-                status_display.write("當前庫存狀態：")
-                status_display.dataframe(df_display.style.applymap(
-                    lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
-                    subset=['檢貨狀態']
-                ))
-            else:
-                st.error(f"更新條碼 {cleaned_barcode} 失敗")
+            st.session_state['inventory_df'] = df
+            
+            # 立即更新顯示
+            df_display = df[display_columns]
+            status_display.empty()
+            status_display.write("當前庫存狀態：")
+            status_display.dataframe(df_display.style.applymap(
+                lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
+                subset=['檢貨狀態']
+            ))
+            
+            # 清除上次掃描的值
+            st.session_state['last_scanned'] = ''
         else:
             st.warning("請輸入有效的條碼")
 
@@ -431,14 +434,18 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+def clean_barcode(barcode):
+    return ''.join(filter(str.isdigit, barcode))
+
 def update_inventory_status(df, barcode):
-    if barcode in df['條碼'].values:
-        df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
-        st.write(f"更新條碼 {barcode} 的狀態為已檢貨")  # 調試信息
+    cleaned_barcode = clean_barcode(barcode)
+    if cleaned_barcode in df['條碼'].astype(str).values:
+        df.loc[df['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'] = '已檢貨'
+        st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
         return df
     else:
-        st.warning(f"條碼 {barcode} 未找到")
-        return None
+        st.warning(f"條碼 {cleaned_barcode} 未找到")
+        return df  # 返回原始 DataFrame，而不是 None
 
 if __name__ == "__main__":
     main()
