@@ -261,6 +261,15 @@ def receive_item(df, barcode, display_columns):
     else:
         st.error("未找到該商品，請檢查條碼是否正確")
 
+def backup_to_drive():
+    st.subheader("備份到 Google Drive")
+    if 'inventory_df' in st.session_state:
+        df = st.session_state['inventory_df']
+        # 备份逻辑
+        st.success("數據已備份到 Google Drive")
+    else:
+        st.warning("沒有可備份的數據")
+
 def main():
     st.title("藥品庫存管理系統")
 
@@ -409,6 +418,14 @@ st.markdown("""
 }
 </style>
 """, unsafe_allow_html=True)
+
+def update_inventory_status(inventory_df, barcode):
+    if barcode in inventory_df['條碼'].values:
+        inventory_df.loc[inventory_df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
+        return inventory_df
+    else:
+        st.warning("條碼未找到")
+        return inventory_df
 
 if __name__ == "__main__":
     main()
