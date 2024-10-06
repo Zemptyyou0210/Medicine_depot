@@ -144,6 +144,11 @@ def check_inventory():
 
     df = st.session_state['inventory_df'].copy()
 
+    # 添加手動更新按鈕
+    if st.button("手動更新庫存狀態"):
+        st.session_state['inventory_df'] = df
+        st.success("庫存狀態已手動更新")
+
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
     df_display = df[display_columns]
@@ -172,12 +177,20 @@ def check_inventory():
     if cleaned_barcode:
         st.write(f"處理的條碼: {cleaned_barcode}")  # 調試信息
         df = update_inventory_status(df, cleaned_barcode)
-        st.session_state['inventory_df'] = df
-        st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
-        st.dataframe(df_display.style.applymap(
-            lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
-            subset=['檢貨狀態']
-        ))
+        if df is not None:
+            st.session_state['inventory_df'] = df
+            st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
+            
+            # 立即更新顯示
+            df_display = df[display_columns]
+            status_display.empty()
+            status_display.write("當前庫存狀態：")
+            status_display.dataframe(df_display.style.applymap(
+                lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
+                subset=['檢貨狀態']
+            ))
+        else:
+            st.error(f"更新條碼 {cleaned_barcode} 失敗")
 
 def receive_inventory():
     st.subheader("收貨")
@@ -400,7 +413,7 @@ def update_inventory_status(df, barcode):
         return df
     else:
         st.warning(f"條碼 {barcode} 未找到")
-        return df
+        return None
 
 if __name__ == "__main__":
     main()
