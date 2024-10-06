@@ -197,7 +197,6 @@ def check_inventory():
             
             # 立即更新顯示
             df_display = df[display_columns]
-            status_display.empty()
             status_display.write("當前庫存狀態：")
             status_display.dataframe(df_display.style.applymap(
                 lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
@@ -349,12 +348,20 @@ function onScanSuccess(decodedText, decodedResult) {
 }
 
 function onScanFailure(error) {
-    // 處理掃描錯誤
     updateDebug('掃描失敗: ' + error);
+    // 如果是特定的錯誤，可以給用戶一些建議
+    if (error.includes("No MultiFormat Readers were able to detect the code")) {
+        updateDebug('提示：請確保條碼清晰可見，並嘗試調整掃描角度。');
+    }
 }
 
 let html5QrcodeScanner = new Html5QrcodeScanner(
-    "scanner-container", { fps: 10, qrbox: 250 }
+    "scanner-container",
+    { 
+        fps: 10, 
+        qrbox: 250,
+        formatsToSupport: [ Html5QrcodeSupportedFormats.EAN_13 ]
+    }
 );
 html5QrcodeScanner.render(onScanSuccess, onScanFailure);
 
@@ -399,12 +406,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def clean_barcode(barcode):
-    # 只保留數字
     cleaned = ''.join(filter(str.isdigit, barcode))
-    # 確保長度為 13
     if len(cleaned) == 13:
         return cleaned
     else:
+        st.warning(f"輸入的條碼 '{barcode}' 不是有效的 EAN-13 格式。")
         return None
 
 def update_inventory_status(df, barcode):
