@@ -166,7 +166,7 @@ def check_inventory():
     ))
 
     # 使用 st.components.v1.html 來嵌入條碼掃描器
-    scanned_value = st.components.v1.html(barcode_scanner_html, height=600)
+    st.components.v1.html(barcode_scanner_html, height=700)
 
     # 初始化 session_state
     if 'scanned_value' not in st.session_state:
@@ -305,22 +305,61 @@ def main():
 barcode_scanner_html = """
 <div id="scanner-container"></div>
 <div id="debug"></div>
+<button id="start-scanner">開始掃描</button>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
-// ... 保留之前的函數定義 ...
+function updateDebug(message) {
+    const debugElement = document.getElementById('debug');
+    debugElement.textContent += message + '\\n';
+    console.log(message);  // 同時在控制台輸出
+}
 
-let html5QrcodeScanner = new Html5Qrcode("scanner-container");
-const config = { 
-    fps: 10, 
-    qrbox: { width: 250, height: 150 },
-    aspectRatio: 1.0,
-    supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
-};
+// ... 保留 isValidEAN13 和 onScanSuccess 函數 ...
 
-html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
-    .catch(err => {
-        updateDebug('啟動掃描器失敗: ' + err);
-    });
+function onScanFailure(error) {
+    updateDebug('掃描失敗: ' + error);
+}
+
+let html5QrCode;
+
+document.getElementById('start-scanner').addEventListener('click', () => {
+    if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => {
+            updateDebug('掃描器已停止');
+        }).catch((err) => {
+            updateDebug('停止掃描器時出錯: ' + err);
+        });
+    } else {
+        html5QrCode = new Html5Qrcode("scanner-container");
+        updateDebug('正在請求相機權限...');
+        Html5Qrcode.getCameras().then(devices => {
+            if (devices && devices.length) {
+                updateDebug('檢測到 ' + devices.length + ' 個相機');
+                let cameraId = devices[0].id;
+                const config = { 
+                    fps: 10, 
+                    qrbox: { width: 250, height: 150 },
+                    aspectRatio: 1.0
+                };
+                updateDebug('嘗試啟動相機...');
+                html5QrCode.start(
+                    { deviceId: { exact: cameraId} },
+                    config,
+                    onScanSuccess,
+                    onScanFailure
+                ).then(() => {
+                    updateDebug('相機啟動成功');
+                }).catch(err => {
+                    updateDebug('啟動相機失敗: ' + err);
+                });
+            } else {
+                updateDebug('沒有檢測到相機');
+            }
+        }).catch(err => {
+            updateDebug('獲取相機列表失敗: ' + err);
+        });
+    }
+});
 
 // ... 保留之前的事件監聽器 ...
 </script>
