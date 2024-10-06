@@ -151,6 +151,7 @@ def check_inventory():
         return
 
     df = st.session_state['inventory_df'].copy()
+    st.write(f"數據框中的條碼示例: {df['條碼'].head().tolist()}")  # 調試信息
 
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
@@ -163,21 +164,26 @@ def check_inventory():
         subset=['檢貨狀態']
     ))
 
-    # 使用 HTML 組件來實現掃描功能
-    scanned_value = components.html(barcode_scanner_html, height=600)
+    # 使用自定義組件來接收掃描的條碼
+    scanned_value = barcode_scanner()
+    st.write(f"掃描到的值: {scanned_value}")  # 調試信息
 
-    # 檢查掃描值是否為有效的字符串
-    if isinstance(scanned_value, str) and scanned_value.strip():
-        st.session_state['last_scanned'] = scanned_value.strip()
-    
-    # 手動輸入條碼，使用之前掃描的值（如果有）
-    manual_input = st.text_input("手動輸入條碼", value=st.session_state.get('last_scanned', ''))
+    # 初始化 session_state
+    if 'manual_input' not in st.session_state:
+        st.session_state['manual_input'] = ''
 
-    if st.button("更新庫存") or (isinstance(scanned_value, str) and scanned_value.strip()):
-        cleaned_barcode = clean_barcode(manual_input or st.session_state.get('last_scanned', ''))
+    # 手動輸入條碼
+    manual_input = st.text_input("手動輸入條碼", value=st.session_state['manual_input'])
+
+    if st.button("更新庫存") or scanned_value:
+        cleaned_barcode = clean_barcode(manual_input or scanned_value or '')
+        st.write(f"清理後的條碼: {cleaned_barcode}")  # 調試信息
         if cleaned_barcode:
-            st.write(f"處理的條碼: {cleaned_barcode}")  # 調試信息
+            st.write(f"處理的條碼: {cleaned_barcode}")
+            df_before = df.copy()
             df = update_inventory_status(df, cleaned_barcode)
+            st.write(f"更新前的檢貨狀態: {df_before.loc[df_before['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'].values}")
+            st.write(f"更新後的檢貨狀態: {df.loc[df['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'].values}")
             st.session_state['inventory_df'] = df
             
             # 立即更新顯示
@@ -191,6 +197,8 @@ def check_inventory():
             
             # 清除上次掃描的值
             st.session_state['last_scanned'] = ''
+            # 清空手動輸入欄位
+            st.session_state['manual_input'] = ''
         else:
             st.warning("請輸入有效的條碼")
 
@@ -438,6 +446,9 @@ def clean_barcode(barcode):
 
 def update_inventory_status(df, barcode):
     cleaned_barcode = clean_barcode(barcode)
+    st.write(f"在 update_inventory_status 中處理的條碼: {cleaned_barcode}")
+    st.write(f"數據框中的條碼類型: {df['條碼'].dtype}")
+    st.write(f"條碼是否存在: {cleaned_barcode in df['條碼'].astype(str).values}")
     if cleaned_barcode in df['條碼'].astype(str).values:
         df.loc[df['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'] = '已檢貨'
         st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
