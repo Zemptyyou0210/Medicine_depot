@@ -163,8 +163,8 @@ def check_inventory():
         subset=['檢貨狀態']
     ))
 
-    # 使用自定義組件來接收掃描的條碼
-    scanned_value = custom_component()
+    # 使用 HTML 組件來實現掃描功能
+    scanned_value = components.html(barcode_scanner_html, height=600)
 
     # 手動輸入條碼
     manual_input = st.text_input("手動輸入條碼", value=scanned_value if scanned_value else "")
