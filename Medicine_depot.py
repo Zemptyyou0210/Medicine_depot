@@ -138,6 +138,18 @@ def check_inventory():
 
     df = st.session_state['inventory_df'].copy()
 
+    # 檢查 URL 參數
+    params = st.experimental_get_query_params()
+    scanned_value = params.get('scanned_value', [None])[0]
+    if scanned_value:
+        st.write(f"掃描到的條碼: {scanned_value}")
+        updated_df = check_and_mark_item(df, scanned_value)
+        if updated_df is not None:
+            st.session_state['inventory_df'] = updated_df
+            # 清除 URL 參數
+            st.experimental_set_query_params()
+            st.rerun()
+
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
     df_display = df[display_columns]
@@ -150,15 +162,7 @@ def check_inventory():
     ))
 
     # 使用 st.components.v1.html 來嵌入條碼掃描器
-    scanned_value = st.components.v1.html(barcode_scanner_html, height=600)
-
-    # 處理掃描結果
-    if scanned_value:
-        st.write(f"掃描到的條碼: {scanned_value}")
-        updated_df = check_and_mark_item(df, scanned_value)
-        if updated_df is not None:
-            st.session_state['inventory_df'] = updated_df
-            st.rerun()
+    st.components.v1.html(barcode_scanner_html, height=600)
 
     # 手動輸入條碼
     manual_input = st.text_input("手動輸入條碼", value="")
@@ -303,6 +307,12 @@ barcode_scanner_html = """
             window.Streamlit.setComponentValue(value);
         } else {
             updateDebug('Streamlit 對象不可用');
+            // 如果 Streamlit 對象不可用，我們可以嘗試使用 URL 參數傳遞值
+            const url = new URL(window.location.href);
+            url.searchParams.set('scanned_value', value);
+            window.history.replaceState({}, '', url);
+            // 觸發頁面重新加載
+            window.location.reload();
         }
     }
 
