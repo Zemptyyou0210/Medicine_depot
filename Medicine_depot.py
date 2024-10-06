@@ -165,18 +165,22 @@ def check_inventory():
     ))
 
     # 使用 st.components.v1.html 來嵌入條碼掃描器
-    scanned_value = st.components.v1.html(barcode_scanner_html, height=600)
-    st.write(f"掃描到的值: {scanned_value}")  # 調試信息
+    st.components.v1.html(barcode_scanner_html, height=600)
 
     # 初始化 session_state
+    if 'scanned_value' not in st.session_state:
+        st.session_state.scanned_value = ""
     if 'manual_input' not in st.session_state:
         st.session_state.manual_input = ""
+
+    # 顯示掃描到的值
+    st.write(f"掃描到的值: {st.session_state.scanned_value}")
 
     # 手動輸入條碼
     manual_input = st.text_input("手動輸入條碼", value=st.session_state.manual_input)
 
-    if st.button("更新庫存") or (isinstance(scanned_value, str) and scanned_value.strip()):
-        cleaned_barcode = clean_barcode(manual_input or scanned_value or '')
+    if st.button("更新庫存") or st.session_state.scanned_value:
+        cleaned_barcode = clean_barcode(manual_input or st.session_state.scanned_value or '')
         st.write(f"清理後的條碼: {cleaned_barcode}")  # 調試信息
         if cleaned_barcode:
             st.write(f"處理的條碼: {cleaned_barcode}")
@@ -186,8 +190,9 @@ def check_inventory():
             st.write(f"更新後的檢貨狀態: {df.loc[df['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'].values}")
             st.session_state['inventory_df'] = df
             
-            # 清空手動輸入欄位
+            # 清空手動輸入欄位和掃描值
             st.session_state.manual_input = ""
+            st.session_state.scanned_value = ""
             
             # 立即更新顯示
             df_display = df[display_columns]
@@ -319,7 +324,10 @@ function updateDebug(message) {
 
 function onScanSuccess(decodedText, decodedResult) {
     updateDebug('掃描成功: ' + decodedText);
-    updateStreamlitInput(decodedText);
+    window.parent.postMessage({
+        type: 'streamlit:setComponentValue',
+        value: decodedText
+    }, '*');
 }
 
 function onScanFailure(error) {
@@ -330,19 +338,6 @@ let html5QrcodeScanner = new Html5QrcodeScanner(
     "scanner-container", { fps: 10, qrbox: 250 }
 );
 html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-
-function updateStreamlitInput(value) {
-    updateDebug('嘗試更新輸入框，值為: ' + value);
-    if (window.parent) {
-        window.parent.postMessage({
-            type: 'streamlit:setComponentValue',
-            value: value
-        }, '*');
-        updateDebug('已使用 postMessage 發送值');
-    } else {
-        updateDebug('無法訪問父窗口');
-    }
-}
 </script>
 """
 
@@ -394,4 +389,15 @@ def update_inventory_status(df, barcode):
         return df
 
 if __name__ == "__main__":
+    # 設置頁面配置
+    st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
+
+    # 處理從 JavaScript 發送的消息
+    if 'scanned_value' not in st.session_state:
+        st.session_state.scanned_value = ""
+
+    message = st.experimental_get_query_params().get("message")
+    if message and message[0] == "streamlit:setComponentValue":
+        st.session_state.scanned_value = st.experimental_get_query_params().get("value", [""])[0]
+
     main()
