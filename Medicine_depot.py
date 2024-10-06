@@ -9,6 +9,9 @@ from pyzbar import pyzbar
 import time
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
+from pyzbar.pyzbar import decode
+from PIL import Image
+import numpy as np
 
 # 設置頁面
 st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
@@ -126,6 +129,15 @@ def display_progress(df):
     st.progress(progress)
     st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
 
+def decode_barcode(image):
+    # 將 PIL Image 轉換為 OpenCV 格式
+    opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    # 解碼條碼
+    barcodes = decode(opencv_image)
+    if barcodes:
+        return barcodes[0].data.decode('utf-8')
+    return None
+
 def check_inventory():
     st.subheader("檢貨")
     
@@ -154,30 +166,16 @@ def check_inventory():
 
     update_displays()
 
-    # 使用 streamlit-webrtc 進行條碼掃描
-    webrtc_ctx = webrtc_streamer(
-        key="barcode-scanner",
-        video_processor_factory=BarcodeVideoProcessor,
-        async_processing=True,
-    )
-
-    # 手動輸入表單
-    with st.form(key='barcode_form', clear_on_submit=True):
-        barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
-        submit_button = st.form_submit_button("檢查商品")
-
-    if submit_button and barcode:
-        if update_inventory_status(df, barcode):
-            st.session_state['inventory_df'] = df
-            update_displays()
-
-    # 處理掃描到的條碼
-    if 'scanned_barcodes' in st.session_state and st.session_state['scanned_barcodes']:
-        for scanned_barcode in st.session_state['scanned_barcodes']:
-            if update_inventory_status(df, scanned_barcode):
+    # 上傳圖片進行條碼掃描
+    uploaded_file = st.file_uploader("上傳條碼圖片", type=["jpg", "jpeg", "png"])
+    if uploaded_file is not None:
+        image = Image.open(uploaded_file)
+        barcode = decode_barcode(image)
+        if barcode:
+            st.success(f"掃描到條碼: {barcode}")
+            if update_inventory_status(df, barcode):
                 st.session_state['inventory_df'] = df
                 update_displays()
-        st.session_state['scanned_barcodes'] = []  # 清空已處理的條碼
 
     if st.button("完成檢貨"):
         st.success("檢貨完成！數據已更新。")
