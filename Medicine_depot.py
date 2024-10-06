@@ -163,7 +163,7 @@ def check_inventory():
 
     st.write(f"當前 scanned_value: {scanned_value}")
 
-    if scanned_value:
+    if scanned_value and isinstance(scanned_value, str):
         try:
             if scanned_value != st.session_state.get('last_scanned_barcode'):
                 st.session_state.last_scanned_barcode = scanned_value
@@ -177,8 +177,9 @@ def check_inventory():
                     st.rerun()
         except Exception as e:
             st.error(f"處理掃描結果時發生錯誤: {str(e)}")
-            st.write(f"接收到的掃描值類型: {type(scanned_value)}")
-            st.write(f"接收到的掃描值內容: {scanned_value}")
+    elif scanned_value:
+        st.error(f"接收到的掃描值類型不正確: {type(scanned_value)}")
+        st.write(f"接收到的掃描值內容: {scanned_value}")
 
     # 顯示調試信息
     st.write("調試信息:")
