@@ -187,19 +187,29 @@ def check_inventory():
         height=0,
     )
 
-    if scanned_value and scanned_value != st.session_state.last_scanned_barcode:
-        st.session_state.last_scanned_barcode = scanned_value
-        result_placeholder.text(f"掃描到的條碼: {scanned_value}")
-        if isinstance(scanned_value, str):
-            # 移除可能的非數字字符
-            cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
-            st.write(f"處理的條碼: {cleaned_barcode}")
-            updated_df = check_and_mark_item(df, cleaned_barcode)
-            if updated_df is not None:
-                st.session_state['inventory_df'] = updated_df
-                st.rerun()
-        else:
-            st.warning(f"接收到的掃描值不是字符串: {type(scanned_value)}")
+    if scanned_value:
+        try:
+            if isinstance(scanned_value, dict) and 'value' in scanned_value:
+                barcode = scanned_value['value']
+            elif isinstance(scanned_value, str):
+                barcode = scanned_value
+            else:
+                raise ValueError(f"Unexpected scanned_value type: {type(scanned_value)}")
+
+            if barcode != st.session_state.last_scanned_barcode:
+                st.session_state.last_scanned_barcode = barcode
+                result_placeholder.text(f"掃描到的條碼: {barcode}")
+                # 移除可能的非數字字符
+                cleaned_barcode = ''.join(filter(str.isdigit, barcode))
+                st.write(f"處理的條碼: {cleaned_barcode}")
+                updated_df = check_and_mark_item(df, cleaned_barcode)
+                if updated_df is not None:
+                    st.session_state['inventory_df'] = updated_df
+                    st.rerun()
+        except Exception as e:
+            st.error(f"處理掃描結果時發生錯誤: {str(e)}")
+            st.write(f"接收到的掃描值類型: {type(scanned_value)}")
+            st.write(f"接收到的掃描值內容: {scanned_value}")
 
     # ... 保留手動輸入選項和檢貨進度顯示的代碼 ...
 
@@ -305,7 +315,7 @@ barcode_scanner_html = """
                         if (currentTime - lastScanTime > 2000) {
                             lastScanTime = currentTime;
                             document.getElementById('results').textContent = "掃描到條碼: " + result.text;
-                            window.parent.postMessage({type: 'scan_result', barcode: result.text}, '*');
+                            window.parent.postMessage({type: 'streamlit:setComponentValue', value: result.text}, '*');
                         }
                     }
                     if (err && !(err instanceof ZXing.NotFoundException)) {
