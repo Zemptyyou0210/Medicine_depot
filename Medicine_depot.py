@@ -137,29 +137,23 @@ def check_inventory():
         subset=['檢貨狀態']
     ))
 
-    webrtc_ctx = webrtc_streamer(
-        key="barcode-scanner",
-        video_processor_factory=BarcodeVideoProcessor,
-        async_processing=True,
-    )
+    # 使用 form 來確保條碼輸入後可以立即處理
+    with st.form(key='barcode_form'):
+        barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
+        submit_button = st.form_submit_button("檢查商品")
 
-    if 'scanned_barcodes' in st.session_state:
-        for barcode in st.session_state['scanned_barcodes']:
-            st.write(f"掃描到條碼: {barcode}")
-            if check_and_mark_item(df, barcode):
-                st.success(f"成功標記商品: {barcode}")
-            else:
-                st.error(f"未找到商品: {barcode}")
-        
-        # 更新顯示
-        df_display = df[display_columns]
-        st.dataframe(df_display.style.applymap(
-            lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
-            subset=['檢貨狀態']
-        ))
-        
-        # 清空已處理的條碼
-        st.session_state['scanned_barcodes'] = []
+    if submit_button or barcode:
+        if barcode in df['條碼'].values:
+            df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
+            st.success(f"成功標記商品: {barcode}")
+            # 更新顯示
+            df_display = df[display_columns]
+            st.dataframe(df_display.style.applymap(
+                lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
+                subset=['檢貨狀態']
+            ))
+        else:
+            st.error(f"未找到商品: {barcode}")
 
     # 顯示檢貨進度
     total_items = len(df)
