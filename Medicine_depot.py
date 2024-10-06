@@ -157,6 +157,7 @@ def check_inventory():
     scanned_value = components.html(barcode_scanner_html, height=600)
 
     if scanned_value and isinstance(scanned_value, str):
+        st.write(f"掃描到的條碼: {scanned_value}")  # 調試信息
         cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
         df = update_inventory_status(df, cleaned_barcode)
         st.session_state['inventory_df'] = df
@@ -380,13 +381,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-def update_inventory_status(inventory_df, barcode):
-    if barcode in inventory_df['條碼'].values:
-        inventory_df.loc[inventory_df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
-        return inventory_df
+def update_inventory_status(df, barcode):
+    if barcode in df['條碼'].values:
+        df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
+        return df
     else:
         st.warning("條碼未找到")
-        return inventory_df
+        return df
 
 if __name__ == "__main__":
     main()
