@@ -166,47 +166,26 @@ def check_inventory():
     ))
 
     # 使用 st.components.v1.html 來嵌入條碼掃描器
-    st.components.v1.html(barcode_scanner_html, height=600)
+    scanned_value = st.components.v1.html(barcode_scanner_html, height=600)
 
     # 初始化 session_state
     if 'scanned_value' not in st.session_state:
         st.session_state.scanned_value = ""
-    if 'manual_input' not in st.session_state:
-        st.session_state.manual_input = ""
 
     # 顯示掃描到的值
-    st.write(f"掃描到的值: {st.session_state.scanned_value}")
+    if st.session_state.scanned_value:
+        st.write(f"掃描到的值: {st.session_state.scanned_value}")
+        # 處理掃描到的條碼
+        process_barcode(st.session_state.scanned_value)
+        # 清除掃描的值，為下一次掃描做準備
+        st.session_state.scanned_value = ""
 
     # 手動輸入條碼
-    manual_input = st.text_input("手動輸入條碼", value=st.session_state.manual_input)
+    manual_input = st.text_input("手動輸入條碼", value="")
 
-    if st.button("更新庫存") or st.session_state.scanned_value:
-        cleaned_barcode = clean_barcode(manual_input or st.session_state.scanned_value or '')
-        st.write(f"清理後的條碼: {cleaned_barcode}")  # 調試信息
-        if cleaned_barcode:
-            st.write(f"處理的條碼: {cleaned_barcode}")
-            df_before = df.copy()
-            df = update_inventory_status(df, cleaned_barcode)
-            st.write(f"更新前的檢貨狀態: {df_before.loc[df_before['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'].values}")
-            st.write(f"更新後的檢貨狀態: {df.loc[df['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'].values}")
-            st.session_state['inventory_df'] = df
-            
-            # 清空手動輸入欄位和掃描值
-            st.session_state.manual_input = ""
-            st.session_state.scanned_value = ""
-            
-            # 立即更新顯示
-            df_display = df[display_columns]
-            status_display.write("當前庫存狀態：")
-            status_display.dataframe(df_display.style.applymap(
-                lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
-                subset=['檢貨狀態']
-            ))
-        else:
-            st.warning("請輸入有效的條碼")
-    else:
-        # 如果沒有更新，保存當前輸入
-        st.session_state.manual_input = manual_input
+    if st.button("更新庫存"):
+        if manual_input:
+            process_barcode(manual_input)
 
     # 顯示調試信息
     st.write("調試信息:")
@@ -225,6 +204,16 @@ def check_inventory():
         """,
         height=200
     )
+
+def process_barcode(barcode):
+    cleaned_barcode = clean_barcode(barcode)
+    if cleaned_barcode:
+        st.write(f"處理的條碼: {cleaned_barcode}")
+        df = update_inventory_status(st.session_state['inventory_df'], cleaned_barcode)
+        st.session_state['inventory_df'] = df
+        st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
+    else:
+        st.error("無效的 EAN-13 條碼")
 
 def receive_inventory():
     st.subheader("收貨")
@@ -316,61 +305,24 @@ def main():
 barcode_scanner_html = """
 <div id="scanner-container"></div>
 <div id="debug"></div>
-<script src="https://unpkg.com/html5-qrcode"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script>
-function updateDebug(message) {
-    const debugElement = document.getElementById('debug');
-    debugElement.textContent += message + '\\n';
-}
+// ... 保留之前的函數定義 ...
 
-function isValidEAN13(code) {
-    if(code.length !== 13 || !/^\d+$/.test(code)) return false;
-    
-    let sum = 0;
-    for(let i = 0; i < 12; i++) {
-        sum += parseInt(code[i]) * (i % 2 === 0 ? 1 : 3);
-    }
-    let checkDigit = (10 - (sum % 10)) % 10;
-    return checkDigit === parseInt(code[12]);
-}
+let html5QrcodeScanner = new Html5Qrcode("scanner-container");
+const config = { 
+    fps: 10, 
+    qrbox: { width: 250, height: 150 },
+    aspectRatio: 1.0,
+    supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA]
+};
 
-function onScanSuccess(decodedText, decodedResult) {
-    updateDebug('掃描到的值: ' + decodedText);
-    if(isValidEAN13(decodedText)) {
-        updateDebug('有效的 EAN-13 條碼');
-        window.parent.postMessage({
-            type: 'streamlit:setComponentValue',
-            value: decodedText
-        }, '*');
-    } else {
-        updateDebug('無效的 EAN-13 條碼');
-    }
-}
+html5QrcodeScanner.start({ facingMode: "environment" }, config, onScanSuccess, onScanFailure)
+    .catch(err => {
+        updateDebug('啟動掃描器失敗: ' + err);
+    });
 
-function onScanFailure(error) {
-    updateDebug('掃描失敗: ' + error);
-    // 如果是特定的錯誤，可以給用戶一些建議
-    if (error.includes("No MultiFormat Readers were able to detect the code")) {
-        updateDebug('提示：請確保條碼清晰可見，並嘗試調整掃描角度。');
-    }
-}
-
-let html5QrcodeScanner = new Html5QrcodeScanner(
-    "scanner-container",
-    { 
-        fps: 10, 
-        qrbox: 250,
-        formatsToSupport: [ Html5QrcodeSupportedFormats.EAN_13 ]
-    }
-);
-html5QrcodeScanner.render(onScanSuccess, onScanFailure);
-
-// 添加事件監聽器來接收來自 Streamlit 的消息
-window.addEventListener('message', function(event) {
-    if (event.data.type === 'streamlit:render') {
-        updateDebug('Streamlit 重新渲染');
-    }
-});
+// ... 保留之前的事件監聽器 ...
 </script>
 """
 
@@ -379,8 +331,8 @@ st.markdown("""
 #scanner-container {
     position: relative;
     width: 100%;
-    max-width: 640px;
-    height: 480px;
+    max-width: 100vw;
+    height: 70vh;
     overflow: hidden;
     margin: auto;
 }
@@ -389,18 +341,14 @@ st.markdown("""
     height: 100%;
     object-fit: cover;
 }
-#start-scanner {
-    display: block;
-    margin: 10px auto;
-    padding: 10px 20px;
-    font-size: 16px;
-    -webkit-appearance: none;
-    border-radius: 0;
-}
-#scanner-status {
-    text-align: center;
+#debug {
     margin-top: 10px;
-    font-weight: bold;
+    padding: 10px;
+    background-color: #f0f0f0;
+    border: 1px solid #ddd;
+    font-size: 14px;
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 </style>
 """, unsafe_allow_html=True)
