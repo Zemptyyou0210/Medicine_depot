@@ -170,14 +170,14 @@ def check_inventory():
         function startScanning() {
             codeReader.listVideoInputDevices()
                 .then((videoInputDevices) => {
-                    selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId  // 使用最後一個設備（通常是後置攝像頭）
+                    selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId
                     codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
                         if (result) {
                             const currentTime = new Date().getTime();
-                            if (currentTime - lastScanTime > 2000) {  // 2秒內只處理一次掃描結果
+                            if (currentTime - lastScanTime > 2000) {
                                 lastScanTime = currentTime;
                                 document.getElementById('results').textContent = "掃描到條碼: " + result.text;
-                                window.Streamlit.setComponentValue(result.text);
+                                window.parent.postMessage({type: 'scan_result', barcode: result.text}, '*');
                             }
                         }
                         if (err && !(err instanceof ZXing.NotFoundException)) {
