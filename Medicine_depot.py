@@ -166,6 +166,7 @@ def check_inventory():
     # 使用 JavaScript 回調來獲取掃描結果
     scanned_value = components.html(
         """
+        <div id="scanned-result"></div>
         <script>
         let lastProcessedTime = 0;
         window.addEventListener('message', function(event) {
@@ -173,7 +174,8 @@ def check_inventory():
                 const currentTime = new Date().getTime();
                 if (currentTime - lastProcessedTime > 2000) {
                     lastProcessedTime = currentTime;
-                    window.parent.postMessage({type: 'streamlit:set_component_value', value: event.data.barcode}, '*');
+                    document.getElementById('scanned-result').textContent = event.data.barcode;
+                    window.parent.postMessage({type: 'streamlit:setComponentValue', value: event.data.barcode}, '*');
                 }
             }
         }, false);
@@ -184,13 +186,16 @@ def check_inventory():
 
     if scanned_value:
         result_placeholder.text(f"掃描到的條碼: {scanned_value}")
-        # 移除可能的非數字字符
-        cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
-        st.write(f"處理的條碼: {cleaned_barcode}")
-        updated_df = check_and_mark_item(df, cleaned_barcode)
-        if updated_df is not None:
-            st.session_state['inventory_df'] = updated_df
-            st.rerun()
+        if isinstance(scanned_value, str):
+            # 移除可能的非數字字符
+            cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
+            st.write(f"處理的條碼: {cleaned_barcode}")
+            updated_df = check_and_mark_item(df, cleaned_barcode)
+            if updated_df is not None:
+                st.session_state['inventory_df'] = updated_df
+                st.rerun()
+        else:
+            st.warning(f"接收到的掃描值不是字符串: {type(scanned_value)}")
 
     # ... 保留手動輸入選項和檢貨進度顯示的代碼 ...
 
@@ -307,9 +312,6 @@ barcode_scanner_html = """
 
     document.addEventListener('DOMContentLoaded', startScanning);
 </script>
-<style>
-    /* ... 保持原有的樣式 ... */
-</style>
 """
 
 st.markdown("""
