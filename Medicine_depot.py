@@ -105,19 +105,14 @@ def check_and_mark_item(df, barcode):
         
         if '條碼' not in df.columns:
             st.error("數據框中缺少 '條碼' 列")
-            return df
-        
-        st.write(f"數據框中的條碼類型: {df['條碼'].dtype}")
-        st.write(f"輸入的條碼類型: {type(barcode)}")
+            return None
         
         # 嘗試完全匹配
         item = df[df['條碼'].astype(str).str.strip() == str(barcode).strip()]
-        st.write(f"完全匹配結果數: {len(item)}")
         
         if item.empty:
             # 如果完全匹配失敗，嘗試部分匹配
             item = df[df['條碼'].astype(str).str.strip().str.contains(str(barcode).strip(), na=False)]
-            st.write(f"部分匹配結果數: {len(item)}")
         
         if not item.empty:
             selected_item = item.iloc[0]
@@ -130,16 +125,15 @@ def check_and_mark_item(df, barcode):
                 new_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
                 st.write(f"檢貨狀態從 '{old_status}' 更新為 '{new_status}'")
                 st.success("商品已自動標記為已檢貨")
+                return df
             else:
                 st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
         else:
             st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
-            st.write("數據框中的前幾個條碼:")
-            st.write(df['條碼'].head())
     except Exception as e:
         st.error(f"處理商品時發生錯誤: {str(e)}")
     
-    return df
+    return None
 
 def check_inventory():
     st.subheader("檢貨")
@@ -230,8 +224,9 @@ def check_inventory():
             cleaned_barcode = ''.join(filter(str.isdigit, value))
             st.write(f"處理的條碼: {cleaned_barcode}")
             updated_df = check_and_mark_item(df, cleaned_barcode)
-            st.session_state['inventory_df'] = updated_df
-            st.rerun()
+            if updated_df is not None:
+                st.session_state['inventory_df'] = updated_df
+                st.rerun()
         except Exception as e:
             st.error(f"處理掃描結果時發生錯誤: {str(e)}")
 
@@ -362,4 +357,3 @@ st.markdown("""
 
 if __name__ == "__main__":
     main()
-    
