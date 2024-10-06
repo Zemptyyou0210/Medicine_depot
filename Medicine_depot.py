@@ -164,6 +164,9 @@ def check_inventory():
     result_placeholder = st.empty()
 
     # 使用 JavaScript 回調來獲取掃描結果
+    if 'last_scanned_barcode' not in st.session_state:
+        st.session_state.last_scanned_barcode = None
+
     scanned_value = components.html(
         """
         <div id="scanned-result"></div>
@@ -184,7 +187,8 @@ def check_inventory():
         height=0,
     )
 
-    if scanned_value:
+    if scanned_value and scanned_value != st.session_state.last_scanned_barcode:
+        st.session_state.last_scanned_barcode = scanned_value
         result_placeholder.text(f"掃描到的條碼: {scanned_value}")
         if isinstance(scanned_value, str):
             # 移除可能的非數字字符
@@ -290,6 +294,10 @@ barcode_scanner_html = """
     function startScanning() {
         codeReader.listVideoInputDevices()
             .then((videoInputDevices) => {
+                if (videoInputDevices.length === 0) {
+                    console.error('No video input devices found');
+                    return;
+                }
                 selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId
                 codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
                     if (result) {
@@ -306,12 +314,32 @@ barcode_scanner_html = """
                 })
             })
             .catch((err) => {
-                console.error(err)
+                console.error('Error accessing camera:', err)
             })
     }
 
     document.addEventListener('DOMContentLoaded', startScanning);
 </script>
+<style>
+    #scanner-container {
+        width: 100%;
+        max-width: 300px;
+        height: 400px;
+        overflow: hidden;
+        margin: 0 auto;
+    }
+    #scanner-container video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    #results {
+        margin-top: 10px;
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+    }
+</style>
 """
 
 st.markdown("""
