@@ -23,12 +23,16 @@ def create_drive_client():
 drive_service = create_drive_client()
 
 def list_files_in_folder(folder_id):
-    results = drive_service.files().list(
-        q=f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
-        pageSize=1000,
-        fields="nextPageToken, files(id, name)"
-    ).execute()
-    return results.get('files', [])
+    try:
+        results = drive_service.files().list(
+            q=f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
+            pageSize=1000,
+            fields="nextPageToken, files(id, name)"
+        ).execute()
+        return results.get('files', [])
+    except Exception as e:
+        st.error(f"列出文件時發生錯誤: {str(e)}")
+        return []
 
 def read_excel_from_drive(file_id):
     request = drive_service.files().get_media(fileId=file_id)
@@ -44,24 +48,24 @@ def read_from_drive():
     st.subheader("從 Google Drive 讀取資料")
     folder_id = "1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA"  # 直接使用固定的資料夾 ID
     
-    files = list_files_in_folder(folder_id)
-    if not files:
-        st.warning("未找到 Excel 文件")
-        if st.button("重新整理"):
-            st.experimental_rerun()
-        return None
-    
-    # 使用下拉式選單選擇 Excel 文件
-    file_names = [file['name'] for file in files]
-    if not file_names:
-        st.warning("資料夾中沒有 Excel 文件")
-        return None
-    
-    selected_file = st.selectbox("選擇 Excel 文件", file_names)
-    
-    if selected_file:
-        file_id = next(file['id'] for file in files if file['name'] == selected_file)
-        try:
+    try:
+        files = list_files_in_folder(folder_id)
+        if not files:
+            st.warning("未找到 Excel 文件")
+            if st.button("重新整理"):
+                st.experimental_rerun()
+            return None
+        
+        # 使用下拉式選單選擇 Excel 文件
+        file_names = [file['name'] for file in files]
+        if not file_names:
+            st.warning("資料夾中沒有 Excel 文件")
+            return None
+        
+        selected_file = st.selectbox("選擇 Excel 文件", file_names)
+        
+        if selected_file:
+            file_id = next(file['id'] for file in files if file['name'] == selected_file)
             df = read_excel_from_drive(file_id)
             # 確保條碼列被正確讀取
             if '條碼' in df.columns:
@@ -78,10 +82,10 @@ def read_from_drive():
             st.session_state['inventory_df'] = df
             st.success(f"已成功讀取 {selected_file}")
             st.write(df)
-        except Exception as e:
-            st.error(f"讀取文件時發生錯誤: {str(e)}")
-    else:
-        st.warning("請選擇一個 Excel 文件")
+        else:
+            st.warning("請選擇一個 Excel 文件")
+    except Exception as e:
+        st.error(f"讀取文件時發生錯誤: {str(e)}")
 
 # 新增的條碼掃描函數
 def scan_barcodes():
@@ -220,7 +224,7 @@ def receive_item(df, barcode, display_columns):
 def main():
     st.title("藥品庫存管理系統")
 
-    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"), key="function_selection")
+    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"))
 
     if function == "從 Google Drive 讀取":
         read_from_drive()
@@ -230,9 +234,6 @@ def main():
         receive_inventory()
     elif function == "備份到 Google Drive":
         backup_to_drive()
-
-    if st.button("測試 Google Drive 訪問"):
-        test_drive_access()
 
 if __name__ == "__main__":
     main()
