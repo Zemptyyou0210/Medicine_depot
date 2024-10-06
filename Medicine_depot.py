@@ -5,6 +5,8 @@ from googleapiclient.http import MediaIoBaseDownload
 import pandas as pd
 import io
 import streamlit.components.v1 as components
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 # 設置頁面
 st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
@@ -306,103 +308,80 @@ def main():
         test_drive_access()
 
 barcode_scanner_html = """
-<div id="scanner-container">
-    <video id="video" playsinline autoplay></video>
-</div>
-<div id="results"></div>
-<div id="debug"></div>
-<button id="startButton">開始掃描</button>
-<script src="https://unpkg.com/@zxing/library@latest"></script>
-<script>
-    const codeReader = new ZXing.BrowserMultiFormatReader()
-    let selectedDeviceId;
-    let lastScanTime = 0;
-
-    function updateDebug(message) {
-        const debugElement = document.getElementById('debug');
-        debugElement.textContent += message + '\\n';
-        debugElement.scrollTop = debugElement.scrollHeight;
-    }
-
-    function updateStreamlitInput(value) {
-        updateDebug('嘗試更新輸入框，值為: ' + value);
-        if (window.Streamlit) {
-            window.Streamlit.setComponentValue(value);
-        } else {
-            updateDebug('Streamlit 對象不可用，嘗試使用 postMessage');
-            window.parent.postMessage({type: 'scanned_barcode', value: value}, '*');
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>條碼掃描器</title>
+    <script src="https://cdn.jsdelivr.net/npm/quagga@0.12.1/dist/quagga.min.js"></script>
+    <style>
+        #interactive.viewport {
+            position: relative;
+            width: 100%;
+            height: 300px;
         }
-    }
+        #interactive.viewport > canvas, #interactive.viewport > video {
+            max-width: 100%;
+            width: 100%;
+        }
+        canvas.drawing, canvas.drawingBuffer {
+            position: absolute;
+            left: 0;
+            top: 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>條碼掃描器</h1>
+    <div id="interactive" class="viewport"></div>
+    <div id="result"></div>
+    <button id="startButton">開始掃描</button>
 
-    function startScanning() {
-        updateDebug('開始掃描');
-        codeReader.listVideoInputDevices()
-            .then((videoInputDevices) => {
-                updateDebug('找到 ' + videoInputDevices.length + ' 個視頻輸入設備');
-                if (videoInputDevices.length === 0) {
-                    updateDebug('沒有找到視頻輸入設備');
+    <script>
+        let lastResult = null;
+
+        function startScanner() {
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector("#interactive"),
+                    constraints: {
+                        facingMode: "environment"
+                    },
+                },
+                decoder: {
+                    readers: ["ean_reader", "ean_8_reader", "code_128_reader"]
+                }
+            }, function(err) {
+                if (err) {
+                    console.log(err);
                     return;
                 }
-                selectedDeviceId = videoInputDevices.find(device => /(back|rear)/i.test(device.label))?.deviceId 
-                    || videoInputDevices[videoInputDevices.length - 1].deviceId;
-                updateDebug('選擇設備 ID: ' + selectedDeviceId);
-                
-                const constraints = {
-                    video: {
-                        deviceId: selectedDeviceId,
-                        facingMode: "environment"
-                    }
-                };
-                
-                codeReader.decodeFromConstraints(constraints, 'video', (result, err) => {
-                    if (result) {
-                        const currentTime = new Date().getTime();
-                        if (currentTime - lastScanTime > 2000) {
-                            lastScanTime = currentTime;
-                            updateDebug('掃描到條碼: ' + result.text);
-                            document.getElementById('results').textContent = "掃描到條碼: " + result.text;
-                            updateStreamlitInput(result.text);
-                        }
-                    }
-                    if (err && !(err instanceof ZXing.NotFoundException)) {
-                        updateDebug('掃描錯誤: ' + err);
-                    }
-                })
-            })
-            .catch((err) => {
-                updateDebug('訪問相機時發生錯誤: ' + err);
-            })
-    }
+                console.log("Quagga initialization finished. Ready to start");
+                Quagga.start();
+            });
 
-    document.getElementById('startButton').onclick = startScanning;
-</script>
-<style>
-    #scanner-container {
-        width: 100%;
-        max-width: 300px;
-        height: 400px;
-        overflow: hidden;
-        margin: 0 auto;
-    }
-    #scanner-container video {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    #results, #debug {
-        margin-top: 10px;
-        font-size: 14px;
-        text-align: left;
-        max-height: 100px;
-        overflow-y: auto;
-    }
-    #startButton {
-        display: block;
-        margin: 10px auto;
-        padding: 10px 20px;
-        font-size: 16px;
-    }
-</style>
+            Quagga.onDetected(function(result) {
+                var code = result.codeResult.code;
+                if (code !== lastResult) {
+                    lastResult = code;
+                    document.getElementById('result').textContent = "掃描到的條碼: " + code;
+                    sendToStreamlit(code);
+                }
+            });
+        }
+
+        function sendToStreamlit(code) {
+            // 這裡需要替換為您的 Streamlit 應用 URL
+            window.location.href = 'https://your-streamlit-app-url/?barcode=' + encodeURIComponent(code);
+        }
+
+        document.getElementById('startButton').addEventListener('click', startScanner);
+    </script>
+</body>
+</html>
 """
 
 st.markdown("""
@@ -444,6 +423,65 @@ def update_inventory_status(df, barcode):
     else:
         st.warning(f"條碼 {barcode} 未找到")
         return None
+
+app = FastAPI()
+
+# 允許所有來源的 CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+@app.post("/update_inventory")
+async def update_inventory(request: Request):
+    data = await request.json()
+    barcode = data.get('barcode')
+    
+    # 在這裡處理條碼更新邏輯
+    # 例如，調用 check_and_mark_item 函數
+    
+    return {"status": "success", "message": f"已更新條碼 {barcode}"}
+
+def main():
+    st.title("藥品庫存管理系統")
+
+    # 檢查是否有掃描的條碼
+    scanned_barcode = st.query_params.get("barcode")
+    if scanned_barcode:
+        st.success(f"接收到掃描的條碼: {scanned_barcode}")
+        # 處理條碼邏輯
+        process_barcode(scanned_barcode)
+        # 清除查詢參數
+        st.query_params.clear()
+        st.rerun()
+
+    # 其他 Streamlit 代碼...
+    display_inventory()
+
+def process_barcode(barcode):
+    # 這裡處理條碼邏輯
+    if 'inventory_df' not in st.session_state:
+        st.session_state.inventory_df = pd.DataFrame(columns=['條碼', '藥品名稱', '檢貨狀態'])
+    
+    # 檢查條碼是否已存在
+    if barcode in st.session_state.inventory_df['條碼'].values:
+        st.session_state.inventory_df.loc[st.session_state.inventory_df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
+        st.success(f"更新條碼 {barcode} 的狀態為已檢貨")
+    else:
+        # 如果條碼不存在，添加新行
+        new_row = pd.DataFrame({'條碼': [barcode], '藥品名稱': ['未知'], '檢貨狀態': ['已檢貨']})
+        st.session_state.inventory_df = pd.concat([st.session_state.inventory_df, new_row], ignore_index=True)
+        st.success(f"添加新條碼 {barcode} 到庫存")
+
+def display_inventory():
+    if 'inventory_df' in st.session_state:
+        st.write("當前庫存狀態：")
+        st.dataframe(st.session_state.inventory_df)
+    else:
+        st.info("庫存為空")
 
 if __name__ == "__main__":
     main()
