@@ -140,13 +140,10 @@ def check_inventory():
     
     if 'inventory_df' not in st.session_state:
         st.warning("請先從 Google Drive 讀取庫存文件")
-        if st.button("前往讀取數據"):
-            st.session_state.function_selection = "從 Google Drive 讀取"
-            st.rerun()
         return
 
     df = st.session_state['inventory_df'].copy()
-    
+
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
     df_display = df[display_columns]
@@ -156,50 +153,18 @@ def check_inventory():
         subset=['檢貨狀態']
     ))
 
-    scanned_barcode = st.empty()
-    
-    # 使用自定義組件
+    # 使用自定義組件來掃描條碼
     scanned_value = components.html(barcode_scanner_html, height=600)
 
-    st.write(f"當前 scanned_value: {scanned_value}")
-
     if scanned_value and isinstance(scanned_value, str):
-        try:
-            if scanned_value != st.session_state.get('last_scanned_barcode'):
-                st.session_state.last_scanned_barcode = scanned_value
-                st.write(f"掃描到的條碼: {scanned_value}")
-                # 移除可能的非數字字符
-                cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
-                st.write(f"處理的條碼: {cleaned_barcode}")
-                updated_df = check_and_mark_item(df, cleaned_barcode)
-                if updated_df is not None:
-                    st.session_state['inventory_df'] = updated_df
-                    st.rerun()
-        except Exception as e:
-            st.error(f"處理掃描結果時發生錯誤: {str(e)}")
-    elif scanned_value:
-        st.error(f"接收到的掃描值類型不正確: {type(scanned_value)}")
-        st.write(f"接收到的掃描值內容: {scanned_value}")
-
-    # 顯示調試信息
-    st.write("調試信息:")
-    st.markdown(components.html(
-        """
-        <div id="debug-display"></div>
-        <script>
-        setInterval(() => {
-            const debugElement = document.getElementById('debug');
-            const debugDisplayElement = document.getElementById('debug-display');
-            if (debugElement && debugDisplayElement) {
-                debugDisplayElement.textContent = debugElement.textContent;
-            }
-        }, 1000);
-        </script>
-        """,
-        height=200
-    ))
-
-    # ... 後面的代碼保持不變 ...
+        cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
+        df = update_inventory_status(df, cleaned_barcode)
+        st.session_state['inventory_df'] = df
+        st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
+        st.dataframe(df_display.style.applymap(
+            lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
+            subset=['檢貨狀態']
+        ))
 
 def receive_inventory():
     st.subheader("收貨")
@@ -308,12 +273,8 @@ barcode_scanner_html = """
 
     function updateStreamlitInput(value) {
         updateDebug('嘗試更新輸入框，值為: ' + value);
-        // 使用 Streamlit 的組件通信機制
-        if (window.Streamlit) {
-            window.Streamlit.setComponentValue(value);
-            updateDebug('已使用 Streamlit.setComponentValue 發送值');
-        } else {
-            updateDebug('Streamlit 對象不可用');
+        if (window.parent) {
+            window.parent.postMessage({type: 'streamlit:setComponentValue', value: value}, '*');
         }
     }
 
