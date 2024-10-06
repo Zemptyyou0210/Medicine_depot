@@ -320,13 +320,12 @@ barcode_scanner_html = """
     function updateStreamlitInput(value) {
         updateDebug('嘗試更新輸入框，值為: ' + value);
         if (window.parent) {
-            window.parent.postMessage({type: 'streamlit:setComponentValue', value: value}, '*');
+            window.parent.postMessage({
+                type: 'streamlit:setComponentValue',
+                value: value,
+                dataType: 'barcode'
+            }, '*');
             updateDebug('已使用 postMessage 發送值');
-            // 自動提交表單
-            setTimeout(() => {
-                window.parent.postMessage({type: 'streamlit:submitForm'}, '*');
-                updateDebug('已發送表單提交消息');
-            }, 500);
         } else {
             updateDebug('無法訪問父窗口');
         }
@@ -445,7 +444,7 @@ def update_inventory_status(df, barcode):
         return df
     else:
         st.warning(f"條碼 {cleaned_barcode} 未找到")
-        return df  # 返回原始 DataFrame，而不是 None
+        return df
 
 if __name__ == "__main__":
     main()
