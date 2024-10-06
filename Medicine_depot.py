@@ -147,8 +147,10 @@ def check_inventory():
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
     df_display = df[display_columns]
-    st.write("當前庫存狀態：")
-    st.dataframe(df_display.style.applymap(
+    
+    status_display = st.empty()
+    status_display.write("當前庫存狀態：")
+    status_display.dataframe(df_display.style.applymap(
         lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
         subset=['檢貨狀態']
     ))
@@ -394,9 +396,10 @@ st.markdown("""
 def update_inventory_status(df, barcode):
     if barcode in df['條碼'].values:
         df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
+        st.write(f"更新條碼 {barcode} 的狀態為已檢貨")  # 調試信息
         return df
     else:
-        st.warning("條碼未找到")
+        st.warning(f"條碼 {barcode} 未找到")
         return df
 
 if __name__ == "__main__":
