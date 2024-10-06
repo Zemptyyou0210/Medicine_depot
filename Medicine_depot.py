@@ -135,6 +135,14 @@ def check_and_mark_item(df, barcode):
     
     return None
 
+def custom_component():
+    component_value = components.declare_component(
+        "custom_component",
+        path="path/to/your/component"  # 替換為實際路徑
+    )
+    return component_value
+
+# 在 check_inventory 函數中使用
 def check_inventory():
     st.subheader("檢貨")
     
@@ -155,38 +163,33 @@ def check_inventory():
         subset=['檢貨狀態']
     ))
 
-    # 使用表單來包裝輸入和更新邏輯
-    with st.form("inventory_form"):
-        # 使用自定義組件來掃描條碼
-        scanned_value = components.html(barcode_scanner_html, height=600)
+    # 使用自定義組件來接收掃描的條碼
+    scanned_value = custom_component()
 
-        # 手動輸入條碼
-        manual_input = st.text_input("手動輸入條碼", value=scanned_value if scanned_value else "")
+    # 手動輸入條碼
+    manual_input = st.text_input("手動輸入條碼", value=scanned_value if scanned_value else "")
 
-        # 提交按鈕
-        submitted = st.form_submit_button("更新庫存")
-
-        if submitted:
-            cleaned_barcode = ''.join(filter(str.isdigit, manual_input))
-            if cleaned_barcode:
-                st.write(f"處理的條碼: {cleaned_barcode}")  # 調試信息
-                df = update_inventory_status(df, cleaned_barcode)
-                if df is not None:
-                    st.session_state['inventory_df'] = df
-                    st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
-                    
-                    # 立即更新顯示
-                    df_display = df[display_columns]
-                    status_display.empty()
-                    status_display.write("當前庫存狀態：")
-                    status_display.dataframe(df_display.style.applymap(
-                        lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
-                        subset=['檢貨狀態']
-                    ))
-                else:
-                    st.error(f"更新條碼 {cleaned_barcode} 失敗")
+    if st.button("更新庫存") or scanned_value:
+        cleaned_barcode = ''.join(filter(str.isdigit, manual_input or scanned_value or ''))
+        if cleaned_barcode:
+            st.write(f"處理的條碼: {cleaned_barcode}")  # 調試信息
+            df = update_inventory_status(df, cleaned_barcode)
+            if df is not None:
+                st.session_state['inventory_df'] = df
+                st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
+                
+                # 立即更新顯示
+                df_display = df[display_columns]
+                status_display.empty()
+                status_display.write("當前庫存狀態：")
+                status_display.dataframe(df_display.style.applymap(
+                    lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
+                    subset=['檢貨狀態']
+                ))
             else:
-                st.warning("請輸入有效的條碼")
+                st.error(f"更新條碼 {cleaned_barcode} 失敗")
+        else:
+            st.warning("請輸入有效的條碼")
 
     # 顯示調試信息
     st.write("調試信息:")
@@ -313,21 +316,16 @@ barcode_scanner_html = """
 
     function updateStreamlitInput(value) {
         updateDebug('嘗試更新輸入框，值為: ' + value);
-        if (window.Streamlit) {
-            window.Streamlit.setComponentValue(value);
-            updateDebug('已使用 Streamlit.setComponentValue 發送值');
+        if (window.parent) {
+            window.parent.postMessage({type: 'streamlit:setComponentValue', value: value}, '*');
+            updateDebug('已使用 postMessage 發送值');
             // 自動提交表單
             setTimeout(() => {
-                const submitButton = window.parent.document.querySelector('button[type="submit"]');
-                if (submitButton) {
-                    submitButton.click();
-                    updateDebug('自動點擊了提交按鈕');
-                } else {
-                    updateDebug('未找到提交按鈕');
-                }
+                window.parent.postMessage({type: 'streamlit:submitForm'}, '*');
+                updateDebug('已發送表單提交消息');
             }, 500);
         } else {
-            updateDebug('Streamlit 對象不可用');
+            updateDebug('無法訪問父窗口');
         }
     }
 
