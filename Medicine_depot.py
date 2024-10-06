@@ -156,9 +156,19 @@ def check_inventory():
     # 使用自定義組件來掃描條碼
     scanned_value = components.html(barcode_scanner_html, height=600)
 
+    # 手動輸入條碼
+    manual_input = st.text_input("手動輸入條碼")
+
+    # 處理掃描或手動輸入的條碼
     if scanned_value and isinstance(scanned_value, str):
-        st.write(f"掃描到的條碼: {scanned_value}")  # 調試信息
         cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
+    elif manual_input:
+        cleaned_barcode = ''.join(filter(str.isdigit, manual_input))
+    else:
+        cleaned_barcode = None
+
+    if cleaned_barcode:
+        st.write(f"處理的條碼: {cleaned_barcode}")  # 調試信息
         df = update_inventory_status(df, cleaned_barcode)
         st.session_state['inventory_df'] = df
         st.success(f"條碼 {cleaned_barcode} 已更新為已檢貨")
