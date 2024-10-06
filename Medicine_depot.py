@@ -186,6 +186,24 @@ def check_inventory():
             st.write(f"接收到的掃描值類型: {type(scanned_value)}")
             st.write(f"接收到的掃描值內容: {scanned_value}")
 
+    # 顯示調試信息
+    st.write("調試信息:")
+    st.markdown(components.html(
+        """
+        <div id="debug-display"></div>
+        <script>
+        setInterval(() => {
+            const debugElement = document.getElementById('debug');
+            const debugDisplayElement = document.getElementById('debug-display');
+            if (debugElement && debugDisplayElement) {
+                debugDisplayElement.textContent = debugElement.textContent;
+            }
+        }, 1000);
+        </script>
+        """,
+        height=200
+    ))
+
     # ... 後面的代碼保持不變 ...
 
 def receive_inventory():
@@ -270,39 +288,53 @@ barcode_scanner_html = """
     <video id="video" playsinline autoplay></video>
 </div>
 <div id="results"></div>
+<div id="debug"></div>
 <script src="https://unpkg.com/@zxing/library@latest"></script>
 <script>
     const codeReader = new ZXing.BrowserMultiFormatReader()
     let selectedDeviceId;
     let lastScanTime = 0;
 
+    function updateDebug(message) {
+        document.getElementById('debug').textContent += message + '\\n';
+    }
+
     function startScanning() {
+        updateDebug('開始掃描');
         codeReader.listVideoInputDevices()
             .then((videoInputDevices) => {
+                updateDebug('找到 ' + videoInputDevices.length + ' 個視頻輸入設備');
                 if (videoInputDevices.length === 0) {
-                    console.error('No video input devices found');
+                    updateDebug('沒有找到視頻輸入設備');
                     return;
                 }
                 selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId
+                updateDebug('選擇設備 ID: ' + selectedDeviceId);
                 codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
                     if (result) {
                         const currentTime = new Date().getTime();
                         if (currentTime - lastScanTime > 2000) {
                             lastScanTime = currentTime;
+                            updateDebug('掃描到條碼: ' + result.text);
                             document.getElementById('results').textContent = "掃描到條碼: " + result.text;
                             // 更新文本輸入框
-                            document.querySelector('input[data-testid="stTextInput"]').value = result.text;
-                            // 觸發 change 事件
-                            document.querySelector('input[data-testid="stTextInput"]').dispatchEvent(new Event('change', { bubbles: true }));
+                            const input = document.querySelector('input[data-testid="stTextInput"]');
+                            if (input) {
+                                input.value = result.text;
+                                input.dispatchEvent(new Event('input', { bubbles: true }));
+                                updateDebug('已更新輸入框');
+                            } else {
+                                updateDebug('未找到輸入框');
+                            }
                         }
                     }
                     if (err && !(err instanceof ZXing.NotFoundException)) {
-                        console.error(err)
+                        updateDebug('掃描錯誤: ' + err);
                     }
                 })
             })
             .catch((err) => {
-                console.error('Error accessing camera:', err)
+                updateDebug('訪問相機時發生錯誤: ' + err);
             })
     }
 
@@ -321,11 +353,10 @@ barcode_scanner_html = """
         height: 100%;
         object-fit: cover;
     }
-    #results {
+    #results, #debug {
         margin-top: 10px;
-        font-size: 18px;
-        font-weight: bold;
-        text-align: center;
+        font-size: 14px;
+        text-align: left;
     }
 </style>
 """
