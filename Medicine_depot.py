@@ -7,6 +7,8 @@ import io
 import cv2
 from pyzbar import pyzbar
 import time
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
+import av
 
 # 設置頁面
 st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
@@ -87,36 +89,32 @@ def read_from_drive():
     except Exception as e:
         st.error(f"讀取文件時發生錯誤: {str(e)}")
 
-# 新增的條碼掃描函數
-def scan_barcodes():
-    cap = cv2.VideoCapture(0)
-    last_scan_time = 0
-    scanned_barcodes = set()
+class BarcodeVideoProcessor(VideoProcessorBase):
+    def __init__(self):
+        self.last_barcode = None
+        self.last_scan_time = 0
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            st.error("無法讀取攝像頭")
-            break
-
-        barcodes = pyzbar.decode(frame)
+    def recv(self, frame):
+        img = frame.to_ndarray(format="bgr24")
+        barcodes = pyzbar.decode(img)
+        
         for barcode in barcodes:
             barcode_data = barcode.data.decode('utf-8')
             current_time = time.time()
-            
-            if current_time - last_scan_time > 2 and barcode_data not in scanned_barcodes:
-                last_scan_time = current_time
-                scanned_barcodes.add(barcode_data)
-                yield barcode_data
+            if current_time - self.last_scan_time > 2 and barcode_data != self.last_barcode:
+                self.last_scan_time = current_time
+                self.last_barcode = barcode_data
+                if 'scanned_barcodes' not in st.session_state:
+                    st.session_state['scanned_barcodes'] = []
+                st.session_state['scanned_barcodes'].append(barcode_data)
 
-        # 顯示攝像頭畫面
-        st.image(frame, channels="BGR", use_column_width=True)
+        return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-        # 檢查是否要停止掃描
-        if st.button("停止掃描"):
-            break
-
-    cap.release()
+def check_and_mark_item(df, barcode):
+    if barcode in df['條碼'].values:
+        df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
+        return True
+    return False
 
 def check_inventory():
     st.subheader("檢貨")
@@ -139,18 +137,29 @@ def check_inventory():
         subset=['檢貨狀態']
     ))
 
-    if st.button("開始掃描"):
-        for barcode in scan_barcodes():
+    webrtc_ctx = webrtc_streamer(
+        key="barcode-scanner",
+        video_processor_factory=BarcodeVideoProcessor,
+        async_processing=True,
+    )
+
+    if 'scanned_barcodes' in st.session_state:
+        for barcode in st.session_state['scanned_barcodes']:
             st.write(f"掃描到條碼: {barcode}")
-            updated_df = check_and_mark_item(df, barcode)
-            st.session_state['inventory_df'] = updated_df
-            
-            # 更新顯示
-            df_display = updated_df[display_columns]
-            st.dataframe(df_display.style.applymap(
-                lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
-                subset=['檢貨狀態']
-            ))
+            if check_and_mark_item(df, barcode):
+                st.success(f"成功標記商品: {barcode}")
+            else:
+                st.error(f"未找到商品: {barcode}")
+        
+        # 更新顯示
+        df_display = df[display_columns]
+        st.dataframe(df_display.style.applymap(
+            lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
+            subset=['檢貨狀態']
+        ))
+        
+        # 清空已處理的條碼
+        st.session_state['scanned_barcodes'] = []
 
     # 顯示檢貨進度
     total_items = len(df)
@@ -158,6 +167,13 @@ def check_inventory():
     progress = checked_items / total_items
     st.progress(progress)
     st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
+
+    # 保存更新後的數據
+    st.session_state['inventory_df'] = df
+
+    if st.button("完成檢貨"):
+        st.success("檢貨完成！數據已更新。")
+        # 這裡可以添加將更新後的數據保存回 Google Drive 的邏輯
 
 def receive_inventory():
     st.subheader("收貨")
