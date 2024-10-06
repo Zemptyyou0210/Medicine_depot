@@ -6,4 +6,5 @@ Pillow
 reportlab
 google-auth-oauthlib
 google-api-python-client
+opencv-python-headless
 pyzbar
