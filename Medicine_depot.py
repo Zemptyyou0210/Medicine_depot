@@ -1,13 +1,14 @@
 import streamlit as st
+
+# 設置頁面配置
+st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
+
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import pandas as pd
 import io
 import streamlit.components.v1 as components
-
-# 設置頁面
-st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
 
 # 創建 Google Drive API 客戶端
 @st.cache_resource
@@ -298,16 +299,17 @@ def backup_to_drive():
 def main():
     st.title("藥品庫存管理系統")
 
-    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"), key="function_selection")
+    # 側邊欄
+    st.sidebar.title("功能選單")
+    menu = ["首頁", "讀取庫存", "檢貨"]
+    choice = st.sidebar.selectbox("選擇功能", menu)
 
-    if function == "從 Google Drive 讀取":
+    if choice == "首頁":
+        st.subheader("歡迎使用藥品庫存管理系統")
+    elif choice == "讀取庫存":
         read_from_drive()
-    elif function == "檢貨":
+    elif choice == "檢貨":
         check_inventory()
-    elif function == "收貨":
-        receive_inventory()
-    elif function == "備份到 Google Drive":
-        backup_to_drive()
 
     if st.button("測試 Google Drive 訪問"):
         test_drive_access()
@@ -332,12 +334,20 @@ function onScanSuccess(decodedText, decodedResult) {
 
 function onScanFailure(error) {
     // 處理掃描錯誤
+    updateDebug('掃描失敗: ' + error);
 }
 
 let html5QrcodeScanner = new Html5QrcodeScanner(
     "scanner-container", { fps: 10, qrbox: 250 }
 );
 html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+
+// 添加事件監聽器來接收來自 Streamlit 的消息
+window.addEventListener('message', function(event) {
+    if (event.data.type === 'streamlit:render') {
+        updateDebug('Streamlit 重新渲染');
+    }
+});
 </script>
 """
 
@@ -388,16 +398,13 @@ def update_inventory_status(df, barcode):
         st.warning(f"條碼 {cleaned_barcode} 未找到")
         return df
 
+# 處理從 JavaScript 發送的消息
+if 'scanned_value' not in st.session_state:
+    st.session_state.scanned_value = ""
+
+message = st.experimental_get_query_params().get("message")
+if message and message[0] == "streamlit:setComponentValue":
+    st.session_state.scanned_value = st.experimental_get_query_params().get("value", [""])[0]
+
 if __name__ == "__main__":
-    # 設置頁面配置
-    st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
-
-    # 處理從 JavaScript 發送的消息
-    if 'scanned_value' not in st.session_state:
-        st.session_state.scanned_value = ""
-
-    message = st.experimental_get_query_params().get("message")
-    if message and message[0] == "streamlit:setComponentValue":
-        st.session_state.scanned_value = st.experimental_get_query_params().get("value", [""])[0]
-
     main()
