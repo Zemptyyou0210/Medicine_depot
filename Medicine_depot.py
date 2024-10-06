@@ -110,11 +110,21 @@ class BarcodeVideoProcessor(VideoProcessorBase):
 
         return av.VideoFrame.from_ndarray(img, format="bgr24")
 
-def check_and_mark_item(df, barcode):
+def update_inventory_status(df, barcode):
     if barcode in df['條碼'].values:
         df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
+        st.success(f"成功標記商品: {barcode}")
         return True
-    return False
+    else:
+        st.error(f"未找到商品: {barcode}")
+        return False
+
+def display_progress(df):
+    total_items = len(df)
+    checked_items = len(df[df['檢貨狀態'] == '已檢貨'])
+    progress = checked_items / total_items
+    st.progress(progress)
+    st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
 
 def check_inventory():
     st.subheader("檢貨")
@@ -130,40 +140,44 @@ def check_inventory():
     
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
-    df_display = df[display_columns]
-    st.write("當前庫存狀態：")
-    st.dataframe(df_display.style.applymap(
-        lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
-        subset=['檢貨狀態']
-    ))
+    inventory_display = st.empty()
+    progress_display = st.empty()
 
-    # 使用 form 來確保條碼輸入後可以立即處理
-    with st.form(key='barcode_form'):
-        barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
-        submit_button = st.form_submit_button("檢查商品")
-
-    if submit_button or barcode:
-        if barcode in df['條碼'].values:
-            df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
-            st.success(f"成功標記商品: {barcode}")
-            # 更新顯示
-            df_display = df[display_columns]
-            st.dataframe(df_display.style.applymap(
+    def update_displays():
+        with inventory_display.container():
+            st.dataframe(df[display_columns].style.applymap(
                 lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
                 subset=['檢貨狀態']
             ))
-        else:
-            st.error(f"未找到商品: {barcode}")
+        with progress_display.container():
+            display_progress(df)
 
-    # 顯示檢貨進度
-    total_items = len(df)
-    checked_items = len(df[df['檢貨狀態'] == '已檢貨'])
-    progress = checked_items / total_items
-    st.progress(progress)
-    st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
+    update_displays()
 
-    # 保存更新後的數據
-    st.session_state['inventory_df'] = df
+    # 使用 streamlit-webrtc 進行條碼掃描
+    webrtc_ctx = webrtc_streamer(
+        key="barcode-scanner",
+        video_processor_factory=BarcodeVideoProcessor,
+        async_processing=True,
+    )
+
+    # 手動輸入表單
+    with st.form(key='barcode_form', clear_on_submit=True):
+        barcode = st.text_input("輸入商品條碼或掃描條碼", key="barcode_input")
+        submit_button = st.form_submit_button("檢查商品")
+
+    if submit_button and barcode:
+        if update_inventory_status(df, barcode):
+            st.session_state['inventory_df'] = df
+            update_displays()
+
+    # 處理掃描到的條碼
+    if 'scanned_barcodes' in st.session_state and st.session_state['scanned_barcodes']:
+        for scanned_barcode in st.session_state['scanned_barcodes']:
+            if update_inventory_status(df, scanned_barcode):
+                st.session_state['inventory_df'] = df
+                update_displays()
+        st.session_state['scanned_barcodes'] = []  # 清空已處理的條碼
 
     if st.button("完成檢貨"):
         st.success("檢貨完成！數據已更新。")
