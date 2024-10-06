@@ -98,17 +98,6 @@ def read_excel_from_drive(file_id):
     fh.seek(0)
     return pd.read_excel(fh)
 
-# 寫入 Excel 文件
-def write_excel_to_drive(df, filename, folder_id):
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False)
-    output.seek(0)
-    file_metadata = {'name': filename, 'parents': [folder_id]}
-    media = MediaIoBaseUpload(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-    file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-    return file.get('id')
-
 # Streamlit 應用程式主函數
 def main():
     st.title("藥品庫存管理系統")
