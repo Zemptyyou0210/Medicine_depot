@@ -10,3 +10,4 @@ opencv-python-headless
 pyzbar
 opencv-python-headless
 streamlit_webrtc
+fastapi uvicorn
