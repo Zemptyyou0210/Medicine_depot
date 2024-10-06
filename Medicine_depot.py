@@ -119,15 +119,9 @@ def check_and_mark_item(df, barcode):
             st.success(f"找到商品：{selected_item['藥品名稱']}")
             st.write(f"匹配的條碼: {selected_item['條碼']}")
             
-            if '檢貨狀態' in df.columns:
-                old_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
-                df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'] = '已檢貨'
-                new_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
-                st.write(f"檢貨狀態從 '{old_status}' 更新為 '{new_status}'")
-                st.success("商品已自動標記為已檢貨")
-                return df
-            else:
-                st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
+            df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'] = '已檢貨'
+            st.success("商品已自動標記為已檢貨")
+            return df
         else:
             st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
     except Exception as e:
@@ -164,7 +158,7 @@ def check_inventory():
         updated_df = check_and_mark_item(df, scanned_value)
         if updated_df is not None:
             st.session_state['inventory_df'] = updated_df
-            st.experimental_rerun()
+            st.rerun()
 
     # 手動輸入條碼
     manual_input = st.text_input("手動輸入條碼", value="")
@@ -174,7 +168,25 @@ def check_inventory():
             updated_df = check_and_mark_item(df, manual_input)
             if updated_df is not None:
                 st.session_state['inventory_df'] = updated_df
-                st.experimental_rerun()
+                st.rerun()
+
+    # 顯示調試信息
+    st.write("調試信息:")
+    st.components.v1.html(
+        """
+        <div id="debug-display"></div>
+        <script>
+        setInterval(() => {
+            const debugElement = document.getElementById('debug');
+            const debugDisplayElement = document.getElementById('debug-display');
+            if (debugElement && debugDisplayElement) {
+                debugDisplayElement.textContent = debugElement.textContent;
+            }
+        }, 1000);
+        </script>
+        """,
+        height=200
+    )
 
 def receive_inventory():
     st.subheader("收貨")
@@ -248,7 +260,11 @@ def backup_to_drive():
 def main():
     st.title("藥品庫存管理系統")
 
-    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"), key="function_selection")
+    function = st.sidebar.selectbox(
+        "選擇功能",
+        ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"),
+        key="function_selection"
+    )
 
     if function == "從 Google Drive 讀取":
         read_from_drive()
@@ -283,11 +299,10 @@ barcode_scanner_html = """
 
     function updateStreamlitInput(value) {
         updateDebug('嘗試更新輸入框，值為: ' + value);
-        if (window.parent) {
-            window.parent.postMessage({
-                type: 'streamlit:setComponentValue',
-                value: value
-            }, '*');
+        if (window.Streamlit) {
+            window.Streamlit.setComponentValue(value);
+        } else {
+            updateDebug('Streamlit 對象不可用');
         }
     }
 
