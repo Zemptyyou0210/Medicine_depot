@@ -4,14 +4,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 import pandas as pd
 import io
-import cv2
-from pyzbar import pyzbar
-import time
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-import av
-from pyzbar.pyzbar import decode
-from PIL import Image
-import numpy as np
+import streamlit.components.v1 as components
 
 # 設置頁面
 st.set_page_config(page_title="藥品庫存管理系統", layout="wide")
@@ -30,113 +23,123 @@ drive_service = create_drive_client()
 def list_files_in_folder(folder_id):
     try:
         results = drive_service.files().list(
-            q=f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
-            pageSize=1000,
-            fields="nextPageToken, files(id, name)"
-        ).execute()
-        return results.get('files', [])
+            q=f"'{folder_id}' in parents",  # 移除 MIME 類型檢查
+            fields="files(id, name, mimeType)").execute()
+        files = results.get('files', [])
+        st.write(f"找到 {len(files)} 個文件")
+        for file in files:
+            st.write(f"文件名: {file['name']}, ID: {file['id']}, 類型: {file['mimeType']}")
+        return files
     except Exception as e:
-        st.error(f"列出文件時發生錯誤: {str(e)}")
+        st.error(f"獲取文件列表時發生錯誤: {str(e)}")
         return []
 
 def read_excel_from_drive(file_id):
     request = drive_service.files().get_media(fileId=file_id)
-    file = io.BytesIO()
-    downloader = MediaIoBaseDownload(file, request)
+    fh = io.BytesIO()
+    downloader = MediaIoBaseDownload(fh, request)
     done = False
     while done is False:
         status, done = downloader.next_chunk()
-    file.seek(0)
-    return pd.read_excel(file)
+    fh.seek(0)
+    return pd.read_excel(fh)
 
 def read_from_drive():
-    st.subheader("從 Google Drive 讀取資料")
-    folder_id = "1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA"  # 直接使用固定的資料夾 ID
+    st.subheader("從 Google Drive 讀取")
+    folder_id = '1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA'  # Google Drive 文件夾 ID
+    files = list_files_in_folder(folder_id)
+    
+    if not files:
+        st.warning("未找到 Excel 文件")
+        if st.button("重新整理"):
+            st.experimental_rerun()
+        return None
+    
+    selected_file = st.selectbox("選擇 Excel 文件", [file['name'] for file in files])
+    file_id = next(file['id'] for file in files if file['name'] == selected_file)
     
     try:
-        files = list_files_in_folder(folder_id)
-        if not files:
-            st.warning("未找到 Excel 文件")
-            if st.button("重新整理"):
-                st.experimental_rerun()
-            return None
-        
-        # 使用下拉式選單選擇 Excel 文件
-        file_names = [file['name'] for file in files]
-        if not file_names:
-            st.warning("資料夾中沒有 Excel 文件")
-            return None
-        
-        selected_file = st.selectbox("選擇 Excel 文件", file_names)
-        
-        if selected_file:
-            file_id = next(file['id'] for file in files if file['name'] == selected_file)
-            df = read_excel_from_drive(file_id)
-            # 確保條碼列被正確讀取
-            if '條碼' in df.columns:
-                df['條碼'] = df['條碼'].astype(str).str.strip()
-                df['條碼'] = df['條碼'].apply(lambda x: ''.join(filter(str.isdigit, x)))
-            else:
-                st.error("數據中缺少 '條碼' 列")
-            
-            # 添加 '檢貨狀態' 列
-            if '檢貨狀態' not in df.columns:
-                df['檢貨狀態'] = '未檢貨'
-                st.info("已添加 '檢貨狀態' 列到數據中")
-
-            st.session_state['inventory_df'] = df
-            st.success(f"已成功讀取 {selected_file}")
-            st.write(df)
+        df = read_excel_from_drive(file_id)
+        # 確保條碼列被正確讀取
+        if '條碼' in df.columns:
+            df['條碼'] = df['條碼'].astype(str).str.strip()
+            # 移除可能的非數字字符
+            df['條碼'] = df['條碼'].apply(lambda x: ''.join(filter(str.isdigit, x)))
         else:
-            st.warning("請選擇一個 Excel 文件")
+            st.error("數據中缺少 '條碼' 列")
+        
+        st.write("數據框中的條碼示例:")
+        st.write(df['條碼'].head())
+        
+        # 讀取 Excel 文件後，檢查並添加 '檢貨狀態' 列
+        if '檢貨狀態' not in df.columns:
+            df['檢貨狀態'] = '未檢貨'
+            st.info("已添加 '檢貨狀態' 列到數據中")
+
+        st.session_state['inventory_df'] = df
+        st.success(f"已成功讀取 {selected_file}")
+        st.write(df)
     except Exception as e:
         st.error(f"讀取文件時發生錯誤: {str(e)}")
 
-class BarcodeVideoProcessor(VideoProcessorBase):
-    def __init__(self):
-        self.last_barcode = None
-        self.last_scan_time = 0
+def test_drive_access():
+    try:
+        results = drive_service.files().list(pageSize=10, fields="files(id, name, mimeType)").execute()
+        items = results.get('files', [])
+        st.write('服務帳號可以訪問 Google Drive。找到的文件：')
+        for item in items:
+            st.write(f"{item['name']} ({item['id']}) - {item['mimeType']}")
+    except Exception as e:
+        st.error(f"訪問 Google Drive 時發生錯誤: {str(e)}")
 
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        barcodes = pyzbar.decode(img)
+def format_ean13(barcode):
+    """將條碼格式化為 EAN-13 格式"""
+    barcode = str(barcode).zfill(13)  # 補零至 13 位
+    return f"{barcode[:1]} {barcode[1:7]} {barcode[7:]}"  # 格式化顯示
+
+def check_and_mark_item(df, barcode):
+    st.write(f"開始處理條碼: {barcode}")
+    try:
+        if '檢貨狀態' not in df.columns:
+            df['檢貨狀態'] = '未檢貨'
         
-        for barcode in barcodes:
-            barcode_data = barcode.data.decode('utf-8')
-            current_time = time.time()
-            if current_time - self.last_scan_time > 2 and barcode_data != self.last_barcode:
-                self.last_scan_time = current_time
-                self.last_barcode = barcode_data
-                if 'scanned_barcodes' not in st.session_state:
-                    st.session_state['scanned_barcodes'] = []
-                st.session_state['scanned_barcodes'].append(barcode_data)
-
-        return av.VideoFrame.from_ndarray(img, format="bgr24")
-
-def update_inventory_status(df, barcode):
-    if barcode in df['條碼'].values:
-        df.loc[df['條碼'] == barcode, '檢貨狀態'] = '已檢貨'
-        st.success(f"成功標記商品: {barcode}")
-        return True
-    else:
-        st.error(f"未找到商品: {barcode}")
-        return False
-
-def display_progress(df):
-    total_items = len(df)
-    checked_items = len(df[df['檢貨狀態'] == '已檢貨'])
-    progress = checked_items / total_items
-    st.progress(progress)
-    st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
-
-def decode_barcode(image):
-    # 將 PIL Image 轉換為 OpenCV 格式
-    opencv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-    # 解碼條碼
-    barcodes = decode(opencv_image)
-    if barcodes:
-        return barcodes[0].data.decode('utf-8')
-    return None
+        if '條碼' not in df.columns:
+            st.error("數據框中缺少 '條碼' 列")
+            return df
+        
+        st.write(f"數據框中的條碼類型: {df['條碼'].dtype}")
+        st.write(f"輸入的條碼類型: {type(barcode)}")
+        
+        # 嘗試完全匹配
+        item = df[df['條碼'].astype(str).str.strip() == str(barcode).strip()]
+        st.write(f"完全匹配結果數: {len(item)}")
+        
+        if item.empty:
+            # 如果完全匹配失敗，嘗試部分匹配
+            item = df[df['條碼'].astype(str).str.strip().str.contains(str(barcode).strip(), na=False)]
+            st.write(f"部分匹配結果數: {len(item)}")
+        
+        if not item.empty:
+            selected_item = item.iloc[0]
+            st.success(f"找到商品：{selected_item['藥品名稱']}")
+            st.write(f"匹配的條碼: {selected_item['條碼']}")
+            
+            if '檢貨狀態' in df.columns:
+                old_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
+                df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'] = '已檢貨'
+                new_status = df.loc[df['條碼'] == selected_item['條碼'], '檢貨狀態'].values[0]
+                st.write(f"檢貨狀態從 '{old_status}' 更新為 '{new_status}'")
+                st.success("商品已自動標記為已檢貨")
+            else:
+                st.warning("無法更新檢貨狀態，因為數據框中缺少 '檢貨狀態' 列")
+        else:
+            st.error(f"未找到條碼為 {barcode} 的商品，請檢查條碼是否正確")
+            st.write("數據框中的前幾個條碼:")
+            st.write(df['條碼'].head())
+    except Exception as e:
+        st.error(f"處理商品時發生錯誤: {str(e)}")
+    
+    return df
 
 def check_inventory():
     st.subheader("檢貨")
@@ -152,34 +155,102 @@ def check_inventory():
     
     # 顯示當前庫存狀態
     display_columns = ['藥庫位置', '藥品名稱', '盤撥量', '藥庫庫存', '檢貨狀態']
-    inventory_display = st.empty()
-    progress_display = st.empty()
+    df_display = df[display_columns]
+    st.write("當前庫存狀態：")
+    st.dataframe(df_display.style.applymap(
+        lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
+        subset=['檢貨狀態']
+    ))
 
-    def update_displays():
-        with inventory_display.container():
-            st.dataframe(df[display_columns].style.applymap(
-                lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
-                subset=['檢貨狀態']
-            ))
-        with progress_display.container():
-            display_progress(df)
+    barcode_scanner_html = """
+    <div id="scanner-container">
+        <video id="video" playsinline autoplay></video>
+    </div>
+    <div id="results"></div>
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <script>
+        const codeReader = new ZXing.BrowserMultiFormatReader()
+        let selectedDeviceId;
+        let lastScanTime = 0;
 
-    update_displays()
+        function startScanning() {
+            codeReader.listVideoInputDevices()
+                .then((videoInputDevices) => {
+                    selectedDeviceId = videoInputDevices[videoInputDevices.length - 1].deviceId  // 使用最後一個設備（通常是後置攝像頭）
+                    codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
+                        if (result) {
+                            const currentTime = new Date().getTime();
+                            if (currentTime - lastScanTime > 2000) {  // 2秒內只處理一次掃描結果
+                                lastScanTime = currentTime;
+                                document.getElementById('results').textContent = "掃描到條碼: " + result.text;
+                                window.Streamlit.setComponentValue(result.text);
+                            }
+                        }
+                        if (err && !(err instanceof ZXing.NotFoundException)) {
+                            console.error(err)
+                        }
+                    })
+                })
+                .catch((err) => {
+                    console.error(err)
+                })
+        }
 
-    # 上傳圖片進行條碼掃描
-    uploaded_file = st.file_uploader("上傳條碼圖片", type=["jpg", "jpeg", "png"])
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file)
-        barcode = decode_barcode(image)
-        if barcode:
-            st.success(f"掃描到條碼: {barcode}")
-            if update_inventory_status(df, barcode):
-                st.session_state['inventory_df'] = df
-                update_displays()
+        document.addEventListener('DOMContentLoaded', startScanning);
+    </script>
+    <style>
+    #scanner-container {
+        width: 100%;
+        max-width: 300px;
+        height: 400px;
+        overflow: hidden;
+        margin: 0 auto;
+    }
+    #scanner-container video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    #results {
+        margin-top: 10px;
+        font-size: 18px;
+        font-weight: bold;
+        text-align: center;
+    }
+    </style>
+    """
 
-    if st.button("完成檢貨"):
-        st.success("檢貨完成！數據已更新。")
-        # 這裡可以添加將更新後的數據保存回 Google Drive 的邏輯
+    scanned_barcode = st.empty()
+    
+    value = components.html(barcode_scanner_html, height=500)
+    if value and isinstance(value, str):
+        try:
+            scanned_barcode.text(f"掃描到的條碼: {value}")
+            # 移除可能的非數字字符
+            cleaned_barcode = ''.join(filter(str.isdigit, value))
+            st.write(f"處理的條碼: {cleaned_barcode}")
+            updated_df = check_and_mark_item(df, cleaned_barcode)
+            st.session_state['inventory_df'] = updated_df
+            st.rerun()
+        except Exception as e:
+            st.error(f"處理掃描結果時發生錯誤: {str(e)}")
+
+    # 手動輸入選項
+    st.markdown("---")
+    st.markdown("### 手動輸入")
+    manual_barcode = st.text_input("輸入商品條碼")
+    if st.button("檢查商品"):
+        if manual_barcode:
+            updated_df = check_and_mark_item(df, manual_barcode)
+            st.session_state['inventory_df'] = updated_df
+            st.rerun()
+
+    # 顯示檢貨進度
+    total_items = len(df)
+    checked_items = len(df[df['檢貨狀態'] == '已檢貨'])
+    progress = checked_items / total_items
+    st.progress(progress)
+    st.write(f"檢貨進度：{checked_items}/{total_items} ({progress:.2%})")
 
 def receive_inventory():
     st.subheader("收貨")
@@ -241,12 +312,10 @@ def receive_item(df, barcode, display_columns):
     else:
         st.error("未找到該商品，請檢查條碼是否正確")
 
-# 保留其他原有的函數...
-
 def main():
     st.title("藥品庫存管理系統")
 
-    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"))
+    function = st.sidebar.radio("選擇功能", ("從 Google Drive 讀取", "檢貨", "收貨", "備份到 Google Drive"), key="function_selection")
 
     if function == "從 Google Drive 讀取":
         read_from_drive()
@@ -257,5 +326,40 @@ def main():
     elif function == "備份到 Google Drive":
         backup_to_drive()
 
+    if st.button("測試 Google Drive 訪問"):
+        test_drive_access()
+
+st.markdown("""
+<style>
+#scanner-container {
+    position: relative;
+    width: 100%;
+    max-width: 640px;
+    height: 480px;
+    overflow: hidden;
+    margin: auto;
+}
+#scanner-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+#start-scanner {
+    display: block;
+    margin: 10px auto;
+    padding: 10px 20px;
+    font-size: 16px;
+    -webkit-appearance: none;
+    border-radius: 0;
+}
+#scanner-status {
+    text-align: center;
+    margin-top: 10px;
+    font-weight: bold;
+}
+</style>
+""", unsafe_allow_html=True)
+
 if __name__ == "__main__":
     main()
+    
