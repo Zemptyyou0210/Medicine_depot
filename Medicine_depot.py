@@ -164,18 +164,18 @@ def check_inventory():
         subset=['檢貨狀態']
     ))
 
-    # 使用自定義組件來接收掃描的條碼
-    scanned_value = barcode_scanner()
+    # 使用 st.components.v1.html 來嵌入條碼掃描器
+    scanned_value = st.components.v1.html(barcode_scanner_html, height=600)
     st.write(f"掃描到的值: {scanned_value}")  # 調試信息
 
     # 初始化 session_state
     if 'manual_input' not in st.session_state:
-        st.session_state['manual_input'] = ''
+        st.session_state.manual_input = ""
 
     # 手動輸入條碼
-    manual_input = st.text_input("手動輸入條碼", value=st.session_state['manual_input'])
+    manual_input = st.text_input("手動輸入條碼", value=st.session_state.manual_input)
 
-    if st.button("更新庫存") or scanned_value:
+    if st.button("更新庫存") or (isinstance(scanned_value, str) and scanned_value.strip()):
         cleaned_barcode = clean_barcode(manual_input or scanned_value or '')
         st.write(f"清理後的條碼: {cleaned_barcode}")  # 調試信息
         if cleaned_barcode:
@@ -186,6 +186,9 @@ def check_inventory():
             st.write(f"更新後的檢貨狀態: {df.loc[df['條碼'].astype(str) == cleaned_barcode, '檢貨狀態'].values}")
             st.session_state['inventory_df'] = df
             
+            # 清空手動輸入欄位
+            st.session_state.manual_input = ""
+            
             # 立即更新顯示
             df_display = df[display_columns]
             status_display.empty()
@@ -194,17 +197,15 @@ def check_inventory():
                 lambda x: 'background-color: #90EE90' if x == '已檢貨' else 'background-color: #FFB6C1',
                 subset=['檢貨狀態']
             ))
-            
-            # 清除上次掃描的值
-            st.session_state['last_scanned'] = ''
-            # 清空手動輸入欄位
-            st.session_state['manual_input'] = ''
         else:
             st.warning("請輸入有效的條碼")
+    else:
+        # 如果沒有更新，保存當前輸入
+        st.session_state.manual_input = manual_input
 
     # 顯示調試信息
     st.write("調試信息:")
-    st.markdown(components.html(
+    st.components.v1.html(
         """
         <div id="debug-display"></div>
         <script>
@@ -218,7 +219,7 @@ def check_inventory():
         </script>
         """,
         height=200
-    ))
+    )
 
 def receive_inventory():
     st.subheader("收貨")
@@ -307,107 +308,42 @@ def main():
         test_drive_access()
 
 barcode_scanner_html = """
-<div id="scanner-container">
-    <video id="video" playsinline autoplay></video>
-</div>
-<div id="results"></div>
+<div id="scanner-container"></div>
 <div id="debug"></div>
-<button id="startButton">開始掃描</button>
-<script src="https://unpkg.com/@zxing/library@latest"></script>
+<script src="https://unpkg.com/html5-qrcode"></script>
 <script>
-    const codeReader = new ZXing.BrowserMultiFormatReader()
-    let selectedDeviceId;
-    let lastScanTime = 0;
+function updateDebug(message) {
+    const debugElement = document.getElementById('debug');
+    debugElement.textContent += message + '\\n';
+}
 
-    function updateDebug(message) {
-        const debugElement = document.getElementById('debug');
-        debugElement.textContent += message + '\\n';
-        debugElement.scrollTop = debugElement.scrollHeight;
+function onScanSuccess(decodedText, decodedResult) {
+    updateDebug('掃描成功: ' + decodedText);
+    updateStreamlitInput(decodedText);
+}
+
+function onScanFailure(error) {
+    // 處理掃描錯誤
+}
+
+let html5QrcodeScanner = new Html5QrcodeScanner(
+    "scanner-container", { fps: 10, qrbox: 250 }
+);
+html5QrcodeScanner.render(onScanSuccess, onScanFailure);
+
+function updateStreamlitInput(value) {
+    updateDebug('嘗試更新輸入框，值為: ' + value);
+    if (window.parent) {
+        window.parent.postMessage({
+            type: 'streamlit:setComponentValue',
+            value: value
+        }, '*');
+        updateDebug('已使用 postMessage 發送值');
+    } else {
+        updateDebug('無法訪問父窗口');
     }
-
-    function updateStreamlitInput(value) {
-        updateDebug('嘗試更新輸入框，值為: ' + value);
-        if (window.parent) {
-            window.parent.postMessage({
-                type: 'streamlit:setComponentValue',
-                value: value,
-                dataType: 'barcode'
-            }, '*');
-            updateDebug('已使用 postMessage 發送值');
-        } else {
-            updateDebug('無法訪問父窗口');
-        }
-    }
-
-    function startScanning() {
-        updateDebug('開始掃描');
-        codeReader.listVideoInputDevices()
-            .then((videoInputDevices) => {
-                updateDebug('找到 ' + videoInputDevices.length + ' 個視頻輸入設備');
-                if (videoInputDevices.length === 0) {
-                    updateDebug('沒有找到視頻輸入設備');
-                    return;
-                }
-                selectedDeviceId = videoInputDevices.find(device => /(back|rear)/i.test(device.label))?.deviceId 
-                    || videoInputDevices[videoInputDevices.length - 1].deviceId;
-                updateDebug('選擇設備 ID: ' + selectedDeviceId);
-                
-                const constraints = {
-                    video: {
-                        deviceId: selectedDeviceId,
-                        facingMode: "environment"
-                    }
-                };
-                
-                codeReader.decodeFromConstraints(constraints, 'video', (result, err) => {
-                    if (result) {
-                        const currentTime = new Date().getTime();
-                        if (currentTime - lastScanTime > 2000) {
-                            lastScanTime = currentTime;
-                            updateDebug('掃描到條碼: ' + result.text);
-                            document.getElementById('results').textContent = "掃描到條碼: " + result.text;
-                            updateStreamlitInput(result.text);
-                        }
-                    }
-                    if (err && !(err instanceof ZXing.NotFoundException)) {
-                        updateDebug('掃描錯誤: ' + err);
-                    }
-                })
-            })
-            .catch((err) => {
-                updateDebug('訪問相機時發生錯誤: ' + err);
-            })
-    }
-
-    document.getElementById('startButton').onclick = startScanning;
+}
 </script>
-<style>
-    #scanner-container {
-        width: 100%;
-        max-width: 300px;
-        height: 400px;
-        overflow: hidden;
-        margin: 0 auto;
-    }
-    #scanner-container video {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    #results, #debug {
-        margin-top: 10px;
-        font-size: 14px;
-        text-align: left;
-        max-height: 100px;
-        overflow-y: auto;
-    }
-    #startButton {
-        display: block;
-        margin: 10px auto;
-        padding: 10px 20px;
-        font-size: 16px;
-    }
-</style>
 """
 
 st.markdown("""
