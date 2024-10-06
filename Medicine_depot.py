@@ -25,18 +25,25 @@ drive_service = create_drive_client()
 # 保留原有的從 Google Drive 讀取資料的函數
 def read_from_drive():
     st.subheader("從 Google Drive 讀取資料")
-    folder_id = st.text_input("輸入 Google Drive 資料夾 ID")
-    if folder_id:
-        files = list_files_in_folder(folder_id)
-        if not files:
-            st.warning("未找到 Excel 文件")
-            if st.button("重新整理"):
-                st.experimental_rerun()
-            return None
-        
-        selected_file = st.selectbox("選擇 Excel 文件", [file['name'] for file in files])
+    folder_id = "1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA"  # 直接使用固定的資料夾 ID
+    
+    files = list_files_in_folder(folder_id)
+    if not files:
+        st.warning("未找到 Excel 文件")
+        if st.button("重新整理"):
+            st.experimental_rerun()
+        return None
+    
+    # 使用下拉式選單選擇 Excel 文件
+    file_names = [file['name'] for file in files if file['name'].endswith('.xlsx')]
+    if not file_names:
+        st.warning("資料夾中沒有 Excel 文件")
+        return None
+    
+    selected_file = st.selectbox("選擇 Excel 文件", file_names)
+    
+    if selected_file:
         file_id = next(file['id'] for file in files if file['name'] == selected_file)
-        
         try:
             df = read_excel_from_drive(file_id)
             # 確保條碼列被正確讀取
@@ -56,6 +63,8 @@ def read_from_drive():
             st.write(df)
         except Exception as e:
             st.error(f"讀取文件時發生錯誤: {str(e)}")
+    else:
+        st.warning("請選擇一個 Excel 文件")
 
 # 新增的條碼掃描函數
 def scan_barcodes():
