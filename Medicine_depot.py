@@ -22,7 +22,24 @@ def create_drive_client():
 
 drive_service = create_drive_client()
 
-# 保留原有的從 Google Drive 讀取資料的函數
+def list_files_in_folder(folder_id):
+    results = drive_service.files().list(
+        q=f"'{folder_id}' in parents and mimeType='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'",
+        pageSize=1000,
+        fields="nextPageToken, files(id, name)"
+    ).execute()
+    return results.get('files', [])
+
+def read_excel_from_drive(file_id):
+    request = drive_service.files().get_media(fileId=file_id)
+    file = io.BytesIO()
+    downloader = MediaIoBaseDownload(file, request)
+    done = False
+    while done is False:
+        status, done = downloader.next_chunk()
+    file.seek(0)
+    return pd.read_excel(file)
+
 def read_from_drive():
     st.subheader("從 Google Drive 讀取資料")
     folder_id = "1LdDnfuu3N8v9PkePOhuJd0Ffv_FBQsMA"  # 直接使用固定的資料夾 ID
@@ -35,7 +52,7 @@ def read_from_drive():
         return None
     
     # 使用下拉式選單選擇 Excel 文件
-    file_names = [file['name'] for file in files if file['name'].endswith('.xlsx')]
+    file_names = [file['name'] for file in files]
     if not file_names:
         st.warning("資料夾中沒有 Excel 文件")
         return None
