@@ -160,20 +160,14 @@ def check_inventory():
     
     components.html(barcode_scanner_html, height=500)
     
-    # 使用 st.empty() 創建一個佔位符
-    result_placeholder = st.empty()
-
-    # 使用 JavaScript 回調來獲取掃描結果
-    if 'last_scanned_barcode' not in st.session_state:
-        st.session_state.last_scanned_barcode = None
-
-    scanned_value = st.text_input("手動輸入條碼", key="manual_barcode_input")
+    # 使用 st.empty() 創建一個可更新的文本輸入框
+    scanned_value = scanned_barcode.text_input("手動輸入條碼", key="manual_barcode_input")
 
     if scanned_value:
         try:
-            if scanned_value != st.session_state.last_scanned_barcode:
+            if scanned_value != st.session_state.get('last_scanned_barcode'):
                 st.session_state.last_scanned_barcode = scanned_value
-                result_placeholder.text(f"掃描到的條碼: {scanned_value}")
+                st.write(f"掃描到的條碼: {scanned_value}")
                 # 移除可能的非數字字符
                 cleaned_barcode = ''.join(filter(str.isdigit, scanned_value))
                 st.write(f"處理的條碼: {cleaned_barcode}")
@@ -299,6 +293,19 @@ barcode_scanner_html = """
         document.getElementById('debug').textContent += message + '\\n';
     }
 
+    function updateStreamlitInput(value) {
+        const input = document.querySelector('input[data-testid="stTextInput"]');
+        if (input) {
+            input.value = value;
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            updateDebug('已更新輸入框');
+        } else {
+            updateDebug('未找到輸入框');
+        }
+        // 使用 Streamlit 的組件通信機制
+        window.parent.postMessage({type: 'streamlit:setComponentValue', value: value}, '*');
+    }
+
     function startScanning() {
         updateDebug('開始掃描');
         codeReader.listVideoInputDevices()
@@ -317,15 +324,7 @@ barcode_scanner_html = """
                             lastScanTime = currentTime;
                             updateDebug('掃描到條碼: ' + result.text);
                             document.getElementById('results').textContent = "掃描到條碼: " + result.text;
-                            // 更新文本輸入框
-                            const input = document.querySelector('input[data-testid="stTextInput"]');
-                            if (input) {
-                                input.value = result.text;
-                                input.dispatchEvent(new Event('input', { bubbles: true }));
-                                updateDebug('已更新輸入框');
-                            } else {
-                                updateDebug('未找到輸入框');
-                            }
+                            updateStreamlitInput(result.text);
                         }
                     }
                     if (err && !(err instanceof ZXing.NotFoundException)) {
